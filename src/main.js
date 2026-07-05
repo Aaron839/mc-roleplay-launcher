@@ -509,21 +509,18 @@ function upsertProfileIn(profilesPath) {
 async function ensureProfile(send) {
   send("profile", "Richte Launcher-Profil ein ...", 0);
 
-  // Laeuft der offizielle Launcher bereits, wuerde er unsere Aenderung beim
-  // Beenden mit seinem eigenen Stand ueberschreiben — also vorher stoppen lassen.
-  if ((await isProcessRunning("MinecraftLauncher.exe")) || (await isProcessRunning("Minecraft.exe"))) {
-    throw new Error(
-      "Der offizielle Minecraft Launcher ist gerade geoeffnet. " +
-      "Bitte schliesse ihn kurz und klicke dann erneut auf SPIELEN — sonst geht das Profil verloren."
-    );
-  }
-
   const paths = profileFilePaths();
   if (paths.length === 0) {
     throw new Error(MC_MISSING_MSG);
   }
+  // Ob der offizielle Launcher offen ist, wird NICHT mehr blockiert (viele Spieler
+  // haben ihn dauerhaft offen). Das Profil wird atomar geschrieben; falls der
+  // Launcher offen war, weist die Schlussmeldung auf einen Neustart hin.
+  const launcherWasOpen =
+    (await isProcessRunning("MinecraftLauncher.exe")) || (await isProcessRunning("Minecraft.exe"));
   for (const p of paths) upsertProfileIn(p);
   send("profile", "Profil MC-ROLEPLAY.DE ist eingerichtet.", 100);
+  return { launcherWasOpen };
 }
 
 // ---------------------------------------------------------------------------
@@ -545,8 +542,12 @@ function spawnDetached(cmd, args) {
   });
 }
 
-async function launchOfficial(send) {
+async function launchOfficial(send, launcherWasOpen) {
   send("launch", "Starte den offiziellen Minecraft Launcher ...", null);
+
+  const reopenHint = launcherWasOpen
+    ? " (Der Launcher war schon offen — falls das Profil MC-ROLEPLAY.DE fehlt, ihn einmal schliessen und neu starten.)"
+    : "";
 
   const exeCandidates = [
     "C:\\Program Files (x86)\\Minecraft Launcher\\MinecraftLauncher.exe",
@@ -556,7 +557,7 @@ async function launchOfficial(send) {
   for (const exe of exeCandidates) {
     if (fs.existsSync(exe)) {
       if (await spawnDetached(exe, [])) {
-        send("done", "Fertig — im Minecraft Launcher das Profil MC-ROLEPLAY.DE wählen und spielen!", 100);
+        send("done", "Fertig — im Minecraft Launcher das Profil MC-ROLEPLAY.DE wählen und spielen!" + reopenHint, 100);
         return;
       }
     }
@@ -568,7 +569,7 @@ async function launchOfficial(send) {
   send(
     "done",
     "Fertig! Falls sich der Minecraft Launcher nicht von selbst oeffnet: bitte manuell starten " +
-      "und das Profil MC-ROLEPLAY.DE wählen (oder den Launcher von minecraft.net installieren).",
+      "und das Profil MC-ROLEPLAY.DE wählen (oder den Launcher von minecraft.net installieren)." + reopenHint,
     100
   );
 }
@@ -603,8 +604,8 @@ ipcMain.handle("play", async (event) => {
     send("java", "Java gefunden: " + javaExe, 100, true);
     await syncPack(javaExe, send, { allowOffline: true });
     await ensureForge(javaExe, send);
-    await ensureProfile(send);
-    await launchOfficial(send);
+    const { launcherWasOpen } = await ensureProfile(send);
+    await launchOfficial(send, launcherWasOpen);
     return { ok: true };
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
