@@ -23,8 +23,14 @@ vertraut.
 - **Kein Passwort.** Der Launcher fragt dich **nie** nach deinem Minecraft- oder
   Microsoft-Passwort. Der Login läuft über den **offiziellen** Minecraft
   Launcher — unser Client startet ihn nur.
-- **Keine Telemetrie, kein Tracking, kein Konto bei uns.** Der Client sendet
-  keine personenbezogenen Daten an uns.
+- **Kein Tracking, kein Konto bei uns.** Der Client verfolgt dich nicht und legt
+  kein Nutzerprofil an.
+- **Eine Ausnahme, ehrlich gesagt:** Wenn *Minecraft abstürzt*, wird der
+  Crash-Report automatisch an unseren Server gesendet, damit wir den Fehler
+  beheben können. Er enthält Fehlerdaten, die Mod-Liste und Systeminfos (und den
+  im Absturzprotokoll stehenden Minecraft-Namen) — **keine Passwörter**. Das
+  lässt sich in den Einstellungen mit einem Klick abschalten. Der Code dazu steht
+  offen in [`src/main.js`](src/main.js) (`reportNewCrashes`).
 - **Alles, was der Launcher aus dem Netz lädt**, kommt aus offiziellen Quellen:
 
   | Ziel | Wofür |

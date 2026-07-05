@@ -26,6 +26,7 @@ const CONFIG = {
   RAM_MB: 8192,
   MC_SERVER_HOST: "mc-roleplay.net",
   MC_SERVER_PORT: 25565,
+  CRASH_UPLOAD_URL: "https://mc-roleplay.de/api/crash",
 };
 
 // App-Datenverzeichnis: %APPDATA%\MC-ROLEPLAY.DE\
@@ -62,11 +63,13 @@ function defaultRamMb() {
 // Persistente Einstellungen (%APPDATA%\MC-ROLEPLAY.DE\settings.json)
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 function loadSettings() {
-  try {
-    const s = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
-    if (s && typeof s.ramMb === "number" && s.ramMb >= RAM_MIN_MB && s.ramMb <= RAM_MAX_MB) return s;
-  } catch (_e) { /* Defaults nutzen */ }
-  return { ramMb: defaultRamMb() };
+  let s = {};
+  try { s = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) || {}; } catch (_e) { /* Defaults */ }
+  const ramMb =
+    typeof s.ramMb === "number" && s.ramMb >= RAM_MIN_MB && s.ramMb <= RAM_MAX_MB ? s.ramMb : defaultRamMb();
+  // Crash-Reports standardmaessig AN (automatisch), aber abschaltbar
+  const sendCrashReports = s.sendCrashReports !== false;
+  return { ramMb, sendCrashReports };
 }
 function saveSettings(settings) {
   ensureDirs();
@@ -801,16 +804,101 @@ async function fetchRemotePack() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Crash-Reports: neue Minecraft-Crashes automatisch an den Server melden
+// (der leitet sie an Discord weiter). Abschaltbar in den Einstellungen.
+// ---------------------------------------------------------------------------
+const CRASH_DIR = path.join(INSTANCE_DIR, "crash-reports");
+const SENT_CRASHES_PATH = path.join(DATA_DIR, "sent-crashes.json");
+
+function loadSentCrashes() {
+  try { return new Set(JSON.parse(fs.readFileSync(SENT_CRASHES_PATH, "utf8"))); }
+  catch (_e) { return null; } // null = noch nie gelaufen
+}
+function saveSentCrashes(set) {
+  try { fs.writeFileSync(SENT_CRASHES_PATH, JSON.stringify([...set].slice(-500)), "utf8"); }
+  catch (_e) { /* egal */ }
+}
+
+/** Kleinen JSON-Body per HTTPS POST senden (feuern und vergessen). */
+function postJson(url, obj) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify(obj), "utf8");
+    const u = new URL(url);
+    const lib = u.protocol === "https:" ? https : http;
+    const req = lib.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === "https:" ? 443 : 80),
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": body.length,
+        "User-Agent": "MC-ROLEPLAY.DE-Launcher/" + app.getVersion(),
+      },
+      timeout: 15000,
+    }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode)); });
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+async function reportNewCrashes() {
+  if (!loadSettings().sendCrashReports) return;
+  let files;
+  try {
+    files = fs.readdirSync(CRASH_DIR).filter((f) => f.toLowerCase().endsWith(".txt"));
+  } catch (_e) { return; } // kein crash-reports-Ordner -> nichts zu tun
+  if (files.length === 0) return;
+
+  let sent = loadSentCrashes();
+  if (sent === null) {
+    // Erster Lauf: vorhandene Crashes als "bekannt" markieren, NICHT rueckwirkend senden
+    saveSentCrashes(new Set(files));
+    return;
+  }
+  for (const f of files) {
+    if (sent.has(f)) continue;
+    try {
+      const full = path.join(CRASH_DIR, f);
+      const stat = fs.statSync(full);
+      if (Date.now() - stat.mtimeMs > 14 * 24 * 3600 * 1000) { sent.add(f); continue; } // nur frische
+      let content = fs.readFileSync(full, "utf8");
+      if (content.length > 200000) content = content.slice(0, 200000) + "\n[... gekuerzt ...]";
+      const status = await postJson(CONFIG.CRASH_UPLOAD_URL, {
+        filename: f,
+        launcherVersion: app.getVersion(),
+        os: os.type() + " " + os.release(),
+        content,
+      });
+      // Nur als erledigt markieren, wenn der Server ihn wirklich angenommen hat
+      // (bei 503 = Webhook noch nicht aktiv -> spaeter erneut versuchen).
+      if (status >= 200 && status < 300) sent.add(f);
+    } catch (_e) { /* diesen Crash ueberspringen, spaeter erneut versuchen */ }
+  }
+  saveSentCrashes(sent);
+}
+
 ipcMain.handle("get-info", async () => {
   const [pack, mcServer] = await Promise.all([fetchRemotePack(), pingMcServer()]);
+  const s = loadSettings();
   return {
     appVersion: app.getVersion(),
     packUrl: CONFIG.PACK_URL,
     forgeVersion: CONFIG.FORGE_VERSION,
-    ramMb: loadSettings().ramMb,
+    ramMb: s.ramMb,
+    sendCrashReports: s.sendCrashReports,
     pack,
     mcServer,
   };
+});
+
+ipcMain.handle("set-crash-reports", (_event, enabled) => {
+  const settings = loadSettings();
+  settings.sendCrashReports = !!enabled;
+  saveSettings(settings);
+  return { ok: true, sendCrashReports: settings.sendCrashReports };
 });
 
 ipcMain.handle("install-update", () => {
@@ -985,6 +1073,10 @@ if (!gotLock) {
     }
     createWindow();
     setupAutoUpdate();
+    // Neue Crashes aus vorherigen Sitzungen melden (leise, im Hintergrund) und
+    // waehrend der Launcher offen bleibt regelmaessig nachsehen.
+    reportNewCrashes().catch(() => {});
+    setInterval(() => reportNewCrashes().catch(() => {}), 5 * 60 * 1000);
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

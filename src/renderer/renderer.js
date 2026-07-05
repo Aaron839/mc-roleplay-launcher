@@ -19,6 +19,7 @@ const settingsOverlay = document.getElementById("settings-overlay");
 const settingsApply = document.getElementById("settings-apply");
 const ramSlider = document.getElementById("ram-slider");
 const ramValue = document.getElementById("ram-value");
+const crashToggle = document.getElementById("crash-toggle");
 
 const MAX_LOG_LINES = 500;
 let logLines = [];
@@ -141,11 +142,12 @@ settingsApply.addEventListener("click", async () => {
   settingsApply.disabled = true;
   try {
     await window.launcher.setRam(gb * 1024);
+    await window.launcher.setCrashReports(crashToggle.checked);
     statRam.textContent = gb + " GB";
-    appendLog("RAM auf " + gb + " GB gesetzt.");
+    appendLog("RAM auf " + gb + " GB gesetzt. Crash-Berichte: " + (crashToggle.checked ? "an" : "aus") + ".");
     settingsOverlay.hidden = true;
   } catch (err) {
-    appendLog("RAM-Einstellung fehlgeschlagen: " + err.message);
+    appendLog("Einstellung fehlgeschlagen: " + err.message);
   } finally {
     settingsApply.disabled = false;
   }
@@ -158,10 +160,11 @@ async function refreshInfo() {
     statClient.textContent = "v" + info.appVersion;
     const gb = Math.round(info.ramMb / 1024);
     statRam.textContent = gb + " GB";
-    // Slider nicht anfassen, waehrend der Nutzer das Einstellungs-Menue offen hat
+    // Regler/Schalter nicht anfassen, waehrend das Einstellungs-Menue offen ist
     if (settingsOverlay.hidden) {
       ramSlider.value = gb;
       ramValue.textContent = gb + " GB";
+      if (typeof info.sendCrashReports === "boolean") crashToggle.checked = info.sendCrashReports;
     }
     statPack.textContent = info.pack && info.pack.ok && info.pack.version ? "v" + info.pack.version : "—";
 
