@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MC-ROLEPLAY.DE</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="stage" aria-hidden="true">
+    <div class="grid"></div>
+    <div class="glow"></div>
+    <canvas id="embers"></canvas>
+    <div class="vignette"></div>
+  </div>
+
+  <main>
+    <header>
+      <div class="update-pill" id="update-pill" hidden role="button" tabindex="0">
+        <span class="dot"></span>
+        <span id="update-pill-text">UPDATE</span>
+      </div>
+      <button class="keycap" id="settings-btn" type="button" title="Einstellungen" aria-label="Einstellungen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </header>
+
+    <section class="hero">
+      <h1 class="wordmark-big">MC-ROLEPLAY<span class="de">.DE</span></h1>
+      <div class="server-line" id="server-line">
+        <span class="dot" id="server-dot"></span>
+        <span id="server-text">PRÜFE SERVER ...</span>
+      </div>
+    </section>
+
+    <section class="center-col">
+      <button class="btn-primary" id="play-btn" type="button">Spielen</button>
+      <div class="stats">
+        <div class="chip">
+          <div class="chip-label">Modpack</div>
+          <div class="chip-value" id="stat-pack">—</div>
+        </div>
+        <div class="chip">
+          <div class="chip-label">Client</div>
+          <div class="chip-value" id="stat-client">—</div>
+        </div>
+        <div class="chip">
+          <div class="chip-label">RAM</div>
+          <div class="chip-value accent" id="stat-ram">—</div>
+        </div>
+      </div>
+      <div class="cta-sub">
+        <button class="btn-secondary" id="sync-btn" type="button">Modpack aktualisieren</button>
+      </div>
+    </section>
+
+    <section class="progress-wrap">
+      <div class="bar" role="progressbar" aria-label="Fortschritt">
+        <div class="fill" id="bar-fill"></div>
+      </div>
+      <div class="status-row">
+        <span class="status-line" id="status-line">Bereit.</span>
+        <button class="log-toggle" id="log-toggle" type="button">Details ›</button>
+      </div>
+      <pre class="log" id="log" hidden aria-live="polite"></pre>
+    </section>
+
+    <footer>
+      <span class="rule"></span>
+      <span class="foot-text">Official MC-Roleplay.de Launcher</span>
+      <span class="rule"></span>
+    </footer>
+  </main>
+
+  <div class="overlay" id="settings-overlay" hidden>
+    <div class="panel" role="dialog" aria-label="Einstellungen">
+      <div class="panel-top"></div>
+      <div class="panel-head">
+        <span class="dot"></span>
+        <span class="panel-title">Einstellungen</span>
+      </div>
+      <div class="panel-body">
+        <label for="ram-slider">Arbeitsspeicher fürs Spiel</label>
+        <div class="slider-row">
+          <input type="range" id="ram-slider" min="4" max="16" step="1" value="8">
+          <span class="ram-value" id="ram-value">8 GB</span>
+        </div>
+        <p class="hint">Empfohlen sind <b>8 GB</b>. Weniger als 6 GB kann ruckeln, mehr als die Hälfte deines PC-Speichers solltest du nicht vergeben. Gilt ab dem nächsten Spielstart.</p>
+        <button class="btn-primary btn-apply" id="settings-apply" type="button">Übernehmen</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

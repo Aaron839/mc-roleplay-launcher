@@ -1,0 +1,31 @@
+appId: de.mcroleplay.launcher
+productName: MC-ROLEPLAY.DE
+
+directories:
+  output: dist
+
+files:
+  - src/**/*
+  - package.json
+  - build/icon.png
+
+extraResources:
+  - from: resources/packwiz-installer-bootstrap.jar
+    to: packwiz-installer-bootstrap.jar
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+
+publish:
+  provider: github
+  owner: Aaron839
+  repo: mc-roleplay-launcher
+  releaseType: release

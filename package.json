@@ -1,0 +1,21 @@
+{
+  "name": "mc-roleplay-launcher",
+  "productName": "MC-ROLEPLAY.DE",
+  "version": "0.3.0",
+  "description": "Offizieller Community-Client fuer den Minecraft-Roleplay-Server mc-roleplay.de",
+  "main": "src/main.js",
+  "author": "MC-ROLEPLAY.DE",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "release": "electron-builder --win nsis --x64 --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}
