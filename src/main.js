@@ -871,6 +871,17 @@ function collectCrashFiles() {
   return out;
 }
 
+// Entfernt sensible Daten (v.a. den Minecraft-Session-Token) aus Crash-Inhalten,
+// BEVOR sie das Geraet verlassen. hs_err-Logs enthalten oben die komplette
+// JVM-Command-Line inkl. --accessToken (Live-Credential!), --clientId, --xuid.
+function redactSecrets(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/(--(?:accessToken|clientId|xuid|session)[=\s]+)\S+/gi, "$1[REDACTED]")
+    .replace(/((?:accessToken|access_token|session|sessionId)["'=:\s]+)[A-Za-z0-9._-]{16,}/gi, "$1[REDACTED]")
+    .replace(/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, "[REDACTED_JWT]");
+}
+
 async function reportNewCrashes() {
   if (!loadSettings().sendCrashReports) return;
   const files = collectCrashFiles();
@@ -887,7 +898,7 @@ async function reportNewCrashes() {
     try {
       const stat = fs.statSync(f.full);
       if (Date.now() - stat.mtimeMs > 14 * 24 * 3600 * 1000) { sent.add(f.name); continue; } // nur frische
-      let content = fs.readFileSync(f.full, "utf8");
+      let content = redactSecrets(fs.readFileSync(f.full, "utf8"));
       if (content.length > 200000) content = content.slice(0, 200000) + "\n[... gekuerzt ...]";
       const status = await postJson(CONFIG.CRASH_UPLOAD_URL, {
         filename: f.name,

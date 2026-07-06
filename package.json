@@ -1,7 +1,7 @@
 {
   "name": "mc-roleplay-launcher",
   "productName": "MC-ROLEPLAY.DE",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Offizieller Community-Client fuer den Minecraft-Roleplay-Server mc-roleplay.de",
   "main": "src/main.js",
   "author": "MC-ROLEPLAY.DE",

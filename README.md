@@ -28,7 +28,9 @@ vertraut.
 - **Eine Ausnahme, ehrlich gesagt:** Wenn *Minecraft abstürzt*, wird der
   Crash-Report automatisch an unseren Server gesendet, damit wir den Fehler
   beheben können. Er enthält Fehlerdaten, die Mod-Liste und Systeminfos (und den
-  im Absturzprotokoll stehenden Minecraft-Namen) — **keine Passwörter**. Das
+  im Absturzprotokoll stehenden Minecraft-Namen) — **keine Passwörter**.
+  Session-Tokens und Konto-IDs (`--accessToken`, `--clientId`, `--xuid` sowie
+  JWTs) werden **vor dem Senden aus dem Report entfernt** (`redactSecrets`). Das
   lässt sich in den Einstellungen mit einem Klick abschalten. Der Code dazu steht
   offen in [`src/main.js`](src/main.js) (`reportNewCrashes`).
 - **Alles, was der Launcher aus dem Netz lädt**, kommt aus offiziellen Quellen:
