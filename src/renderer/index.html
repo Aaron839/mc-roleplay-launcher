@@ -7,100 +7,102 @@
   <title>MC-ROLEPLAY.DE</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="boot">
   <div class="stage" aria-hidden="true">
-    <div class="grid"></div>
-    <div class="glow"></div>
+    <div class="glow-center"></div>
+    <div class="glow-tl"></div>
+    <div class="glow-br"></div>
     <canvas id="embers"></canvas>
     <div class="vignette"></div>
+    <div class="flare"></div>
   </div>
 
   <main>
-    <header>
-      <div class="update-pill" id="update-pill" hidden role="button" tabindex="0">
+    <div class="topbar">
+      <button class="update-pill" id="update-pill" hidden>
         <span class="dot"></span>
-        <span id="update-pill-text">UPDATE</span>
-      </div>
-      <button class="keycap" id="settings-btn" type="button" title="Einstellungen" aria-label="Einstellungen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
+        <span id="update-pill-text">Launcher-Update verfügbar</span>
       </button>
-    </header>
+      <button class="gear" id="settings-open" type="button" aria-label="Einstellungen">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#c9beb6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
 
-    <section class="hero">
-      <h1 class="wordmark-big">MC-ROLEPLAY<span class="de">.DE</span></h1>
-      <div class="server-line" id="server-line">
-        <span class="dot" id="server-dot"></span>
-        <span id="server-text">PRÜFE SERVER ...</span>
-      </div>
-    </section>
+    <div class="center">
+      <div class="column">
+        <h1 class="wordmark">MC-ROLEPLAY<span class="de">.DE</span></h1>
 
-    <section class="center-col">
-      <button class="btn-primary" id="play-btn" type="button">Spielen</button>
-      <div class="stats">
-        <div class="chip">
-          <div class="chip-label">Modpack</div>
-          <div class="chip-value" id="stat-pack">—</div>
+        <div class="server-status" id="server-status">
+          <span class="s-dot"></span>
+          <span class="s-label" id="server-label">Prüfe Server …</span>
+          <span class="s-meta" id="server-meta"></span>
         </div>
-        <div class="chip">
-          <div class="chip-label">Client</div>
-          <div class="chip-value" id="stat-client">—</div>
-        </div>
-        <div class="chip">
-          <div class="chip-label">RAM</div>
-          <div class="chip-value accent" id="stat-ram">—</div>
-        </div>
-      </div>
-      <div class="cta-sub">
-        <button class="btn-secondary" id="sync-btn" type="button">Modpack aktualisieren</button>
-      </div>
-    </section>
 
-    <section class="progress-wrap">
-      <div class="bar" role="progressbar" aria-label="Fortschritt">
-        <div class="fill" id="bar-fill"></div>
-      </div>
-      <div class="status-row">
-        <span class="status-line" id="status-line">Bereit.</span>
-        <button class="log-toggle" id="log-toggle" type="button">Details ›</button>
-      </div>
-      <pre class="log" id="log" hidden aria-live="polite"></pre>
-    </section>
+        <div class="chips">
+          <span class="chip"><span class="chip-label">Modpack</span><span class="chip-val accent" id="chip-modpack">—</span></span>
+          <span class="chip"><span class="chip-label">Client</span><span class="chip-val" id="chip-client">—</span></span>
+          <span class="chip"><span class="chip-label">RAM</span><span class="chip-val" id="chip-ram">—</span></span>
+        </div>
 
-    <footer>
-      <span class="rule"></span>
-      <span class="foot-text">Official MC-Roleplay.de Launcher</span>
-      <span class="rule"></span>
-    </footer>
+        <div class="action-slot">
+          <button class="btn-play" id="btn-ready" type="button">
+            <svg class="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="#1d0a06" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+            <span class="play-text">SPIELEN</span>
+          </button>
+
+          <div class="btn-work" id="btn-work" aria-disabled="true" hidden>
+            <div class="work-bed"></div>
+            <div class="work-fill" id="work-fill">
+              <div class="fill-grad"></div>
+              <div class="fill-sheen"></div>
+              <div class="fill-heat"></div>
+            </div>
+            <div class="burn-edge" id="burn-edge"></div>
+            <div class="spark-emit" id="spark-emit"></div>
+            <div class="work-label">
+              <span class="work-step" id="work-step">Starte …</span>
+              <span class="work-pct" id="work-pct">0 %</span>
+            </div>
+          </div>
+
+          <div class="btn-start" id="btn-start" hidden><span>WIRD GESTARTET …</span></div>
+
+          <button class="btn-error" id="btn-error" type="button" hidden>
+            <span class="err-title" id="err-title">Fehlgeschlagen</span>
+            <span class="err-retry">ERNEUT VERSUCHEN</span>
+          </button>
+        </div>
+
+        <div class="details">
+          <button class="log-toggle" id="log-toggle" type="button"><span class="arrow">›</span> Details</button>
+          <pre class="log-panel" id="log-panel" hidden aria-live="polite"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer"><span>Official MC-Roleplay.de Launcher</span></div>
   </main>
 
   <div class="overlay" id="settings-overlay" hidden>
-    <div class="panel" role="dialog" aria-label="Einstellungen">
-      <div class="panel-top"></div>
-      <div class="panel-head">
-        <span class="dot"></span>
-        <span class="panel-title">Einstellungen</span>
-      </div>
-      <div class="panel-body">
-        <label for="ram-slider">Arbeitsspeicher fürs Spiel</label>
-        <div class="slider-row">
-          <input type="range" id="ram-slider" min="4" max="16" step="1" value="8">
-          <span class="ram-value" id="ram-value">8 GB</span>
-        </div>
-        <p class="hint">Empfohlen sind <b>8 GB</b>. Weniger als 6 GB kann ruckeln, mehr als die Hälfte deines PC-Speichers solltest du nicht vergeben. Gilt ab dem nächsten Spielstart.</p>
+    <div class="panel" id="settings-panel">
+      <div class="panel-title">EINSTELLUNGEN</div>
 
-        <div class="setting-toggle">
-          <label for="crash-toggle">
-            <span class="toggle-title">Crash-Berichte automatisch senden</span>
-            <span class="toggle-sub">Hilft uns, Abstürze zu beheben. Enthält Fehlerdaten &amp; Systeminfos – keine Passwörter.</span>
-          </label>
-          <input type="checkbox" id="crash-toggle" checked>
+      <div class="setting-ram">
+        <div class="ram-head">
+          <span class="ram-name">Arbeitsspeicher</span>
+          <span class="ram-val accent" id="ram-val">8 GB</span>
         </div>
-
-        <button class="btn-primary btn-apply" id="settings-apply" type="button">Übernehmen</button>
+        <input type="range" id="ram-slider" min="4" max="16" step="1" value="8">
+        <div class="ram-scale"><span>4 GB</span><span>16 GB</span></div>
       </div>
+
+      <div class="setting-crash">
+        <span class="crash-name">Crash-Berichte automatisch senden</span>
+        <button class="switch" id="crash-toggle" type="button" role="switch" aria-checked="true"><span class="knob"></span></button>
+      </div>
+
+      <button class="btn-apply" id="settings-apply" type="button">Übernehmen</button>
+      <div class="apply-hint">ESC schließt ebenfalls</div>
     </div>
   </div>
 

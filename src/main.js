@@ -1048,40 +1048,29 @@ function createWindow() {
   });
 }
 
-// Nur eine Launcher-Instanz zulassen — parallele packwiz-/Forge-Prozesse
-// wuerden sich gegenseitig die Dateien zerschreiben.
-const gotLock = IS_SMOKE || IS_SELFTEST || app.requestSingleInstanceLock();
-if (!gotLock) {
-  app.quit();
-} else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+// Bewusst KEIN requestSingleInstanceLock: eine verwaiste Sperr-Datei (nach einem
+// harten Absturz) machte den Launcher sonst dauerhaft unstartbar. Doppelstarts
+// sind unkritisch — der playRunning-Guard verhindert parallele Sync-Vorgaenge.
+app.whenReady().then(() => {
+  if (IS_SMOKE) {
+    console.log("SMOKE OK");
+    app.quit();
+    return;
+  }
+  if (IS_SELFTEST) {
+    runSelftest();
+    return;
+  }
+  createWindow();
+  setupAutoUpdate();
+  // Neue Crashes aus vorherigen Sitzungen melden (leise, im Hintergrund) und
+  // waehrend der Launcher offen bleibt regelmaessig nachsehen.
+  reportNewCrashes().catch(() => {});
+  setInterval(() => reportNewCrashes().catch(() => {}), 5 * 60 * 1000);
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-
-  app.whenReady().then(() => {
-    if (IS_SMOKE) {
-      console.log("SMOKE OK");
-      app.quit();
-      return;
-    }
-    if (IS_SELFTEST) {
-      runSelftest();
-      return;
-    }
-    createWindow();
-    setupAutoUpdate();
-    // Neue Crashes aus vorherigen Sitzungen melden (leise, im Hintergrund) und
-    // waehrend der Launcher offen bleibt regelmaessig nachsehen.
-    reportNewCrashes().catch(() => {});
-    setInterval(() => reportNewCrashes().catch(() => {}), 5 * 60 * 1000);
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
-  });
-}
+});
 
 app.on("window-all-closed", () => {
   app.quit();
