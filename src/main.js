@@ -844,40 +844,81 @@ function postJson(url, obj) {
   });
 }
 
+/**
+ * Sammelt Crash-Dateien aus allen relevanten Quellen:
+ *  - crash-reports/*.txt        normale Minecraft-Crashes (Java-Exception sauber gefangen)
+ *  - hs_err_pid*.log            HARTE Abstuerze (JVM/Grafiktreiber/native Mods) — kein .txt!
+ *  - crash-reports/hs_err*.log  (manche landen dort)
+ * hs_err-Logs koennen im gameDir, in .minecraft oder in crash-reports liegen.
+ */
+function collectCrashFiles() {
+  const out = [];
+  const seen = new Set();
+  const isHsErr = (n) => /^hs_err_pid.*\.(log|mdmp)$/i.test(n);
+  const isTxtCrash = (n) => n.toLowerCase().endsWith(".txt");
+  const scan = (dir, filter) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_e) { return; }
+    for (const e of entries) {
+      if (!e.isFile() || !filter(e.name) || seen.has(e.name)) continue;
+      seen.add(e.name);
+      out.push({ full: path.join(dir, e.name), name: e.name });
+    }
+  };
+  scan(CRASH_DIR, (n) => isTxtCrash(n) || isHsErr(n));
+  scan(INSTANCE_DIR, isHsErr);
+  scan(MC_DIR, isHsErr);
+  return out;
+}
+
 async function reportNewCrashes() {
   if (!loadSettings().sendCrashReports) return;
-  let files;
-  try {
-    files = fs.readdirSync(CRASH_DIR).filter((f) => f.toLowerCase().endsWith(".txt"));
-  } catch (_e) { return; } // kein crash-reports-Ordner -> nichts zu tun
+  const files = collectCrashFiles();
   if (files.length === 0) return;
 
   let sent = loadSentCrashes();
   if (sent === null) {
     // Erster Lauf: vorhandene Crashes als "bekannt" markieren, NICHT rueckwirkend senden
-    saveSentCrashes(new Set(files));
+    saveSentCrashes(new Set(files.map((f) => f.name)));
     return;
   }
   for (const f of files) {
-    if (sent.has(f)) continue;
+    if (sent.has(f.name)) continue;
     try {
-      const full = path.join(CRASH_DIR, f);
-      const stat = fs.statSync(full);
-      if (Date.now() - stat.mtimeMs > 14 * 24 * 3600 * 1000) { sent.add(f); continue; } // nur frische
-      let content = fs.readFileSync(full, "utf8");
+      const stat = fs.statSync(f.full);
+      if (Date.now() - stat.mtimeMs > 14 * 24 * 3600 * 1000) { sent.add(f.name); continue; } // nur frische
+      let content = fs.readFileSync(f.full, "utf8");
       if (content.length > 200000) content = content.slice(0, 200000) + "\n[... gekuerzt ...]";
       const status = await postJson(CONFIG.CRASH_UPLOAD_URL, {
-        filename: f,
+        filename: f.name,
         launcherVersion: app.getVersion(),
         os: os.type() + " " + os.release(),
         content,
       });
       // Nur als erledigt markieren, wenn der Server ihn wirklich angenommen hat
       // (bei 503 = Webhook noch nicht aktiv -> spaeter erneut versuchen).
-      if (status >= 200 && status < 300) sent.add(f);
+      if (status >= 200 && status < 300) sent.add(f.name);
     } catch (_e) { /* diesen Crash ueberspringen, spaeter erneut versuchen */ }
   }
   saveSentCrashes(sent);
+}
+
+// Live-Ueberwachung: solange der Launcher offen ist, werden neue Crash-Dateien
+// binnen Sekunden gemeldet (nicht erst beim naechsten Start / im 5-Min-Takt).
+let _crashDebounce = null;
+function watchCrashes() {
+  const trigger = () => {
+    clearTimeout(_crashDebounce);
+    _crashDebounce = setTimeout(() => reportNewCrashes().catch(() => {}), 3000);
+  };
+  for (const dir of [CRASH_DIR, INSTANCE_DIR]) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (_e) {}
+    try {
+      fs.watch(dir, { persistent: false }, (_ev, fn) => {
+        if (fn && (/\.txt$/i.test(fn) || /^hs_err_pid/i.test(fn))) trigger();
+      });
+    } catch (_e) { /* fs.watch nicht verfuegbar -> Startup + 5-Min-Takt reichen */ }
+  }
 }
 
 ipcMain.handle("get-info", async () => {
@@ -1051,7 +1092,7 @@ function createWindow() {
 // Bewusst KEIN requestSingleInstanceLock: eine verwaiste Sperr-Datei (nach einem
 // harten Absturz) machte den Launcher sonst dauerhaft unstartbar. Doppelstarts
 // sind unkritisch — der playRunning-Guard verhindert parallele Sync-Vorgaenge.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (IS_SMOKE) {
     console.log("SMOKE OK");
     app.quit();
@@ -1061,12 +1102,21 @@ app.whenReady().then(() => {
     runSelftest();
     return;
   }
+  if (process.argv.includes("--crash-scan")) {
+    const found = collectCrashFiles();
+    console.log("Gefundene Crash-Dateien (" + found.length + "): " + found.map((f) => f.name).join(", "));
+    await reportNewCrashes();
+    console.log("CRASH-SCAN OK");
+    app.exit(0);
+    return;
+  }
   createWindow();
   setupAutoUpdate();
   // Neue Crashes aus vorherigen Sitzungen melden (leise, im Hintergrund) und
   // waehrend der Launcher offen bleibt regelmaessig nachsehen.
   reportNewCrashes().catch(() => {});
   setInterval(() => reportNewCrashes().catch(() => {}), 5 * 60 * 1000);
+  watchCrashes();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
