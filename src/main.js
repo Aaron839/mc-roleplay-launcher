@@ -52,12 +52,17 @@ function javaArgsFor(ramMb) {
 const RAM_MIN_MB = 4096;
 const RAM_MAX_MB = 16384;
 
-/** Standard-RAM abhaengig vom physischen Speicher (8-GB-PCs nicht ins Swapping treiben). */
+/** Standard-RAM abhaengig vom physischen Speicher.
+ *  WICHTIG (Crash-Analyse Luis, Juli 2026): Der Minecraft-Prozess committet mit diesem
+ *  Modpack ~8-9 GB NATIV zusaetzlich zum Java-Heap (Treiber/Netty/JIT/Mods). Auf einem
+ *  16-GB-PC fuehrt Xmx=8G daher in die volle Auslagerungsdatei -> "insufficient memory"
+ *  Abstuerze. 16-GB-Systeme bekommen deshalb 6G — das Pack laeuft damit sauber. */
 function defaultRamMb() {
   const totalMb = Math.round(os.totalmem() / (1024 * 1024));
-  if (totalMb >= 14000) return 8192;
-  if (totalMb >= 10000) return 6144;
-  return RAM_MIN_MB;
+  if (totalMb >= 26000) return 8192;   // 32 GB+: genug Luft fuer 8G Heap
+  if (totalMb >= 14000) return 6144;   // 16 GB: 6G Heap = stabil (8G -> Pagefile-Tod)
+  if (totalMb >= 10000) return 5120;   // 12 GB
+  return RAM_MIN_MB;                   // 8 GB
 }
 
 // Persistente Einstellungen (%APPDATA%\MC-ROLEPLAY.DE\settings.json)
@@ -65,6 +70,20 @@ const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 function loadSettings() {
   let s = {};
   try { s = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) || {}; } catch (_e) { /* Defaults */ }
+
+  // Einmal-Migration v0.3.6: Der alte Pauschal-Default (8192) wurde bei manchen Spielern
+  // als Wert persistiert, ohne dass sie ihn bewusst gewaehlt haben (Uebernehmen-Klick).
+  // Auf Systemen, wo 8192 nachweislich Abstuerze verursacht (< 26 GB RAM), einmalig auf
+  // die neue Empfehlung absenken. Wer danach bewusst hochstellt (ramCustom), bleibt hoch.
+  if (typeof s.ramMb === "number" && s.ramMb === 8192 && !s.ramCustom && !s.ramMigratedV036) {
+    const recommended = defaultRamMb();
+    if (recommended < 8192) {
+      s.ramMb = recommended;
+      s.ramMigratedV036 = true;
+      try { saveSettings(s); } catch (_e) { /* beim naechsten Speichern */ }
+    }
+  }
+
   const ramMb =
     typeof s.ramMb === "number" && s.ramMb >= RAM_MIN_MB && s.ramMb <= RAM_MAX_MB ? s.ramMb : defaultRamMb();
   // Crash-Reports standardmaessig AN (automatisch), aber abschaltbar
@@ -946,8 +965,14 @@ ipcMain.handle("get-info", async () => {
   };
 });
 
+// Roh-Settings lesen (ALLE Keys erhalten — loadSettings() filtert und wuerde
+// Zusatz-Flags wie ramCustom/ramMigratedV036 beim Speichern verlieren).
+function loadRawSettings() {
+  try { return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) || {}; } catch (_e) { return {}; }
+}
+
 ipcMain.handle("set-crash-reports", (_event, enabled) => {
-  const settings = loadSettings();
+  const settings = loadRawSettings();
   settings.sendCrashReports = !!enabled;
   saveSettings(settings);
   return { ok: true, sendCrashReports: settings.sendCrashReports };
@@ -963,8 +988,9 @@ ipcMain.handle("set-ram", async (_event, ramMb) => {
   if (!Number.isFinite(mb) || mb < RAM_MIN_MB || mb > RAM_MAX_MB) {
     throw new Error("Ungueltiger RAM-Wert.");
   }
-  const settings = loadSettings();
+  const settings = loadRawSettings();
   settings.ramMb = mb;
+  settings.ramCustom = true;   // bewusste Nutzer-Wahl -> Migration fasst das nie wieder an
   saveSettings(settings);
   // Bestehendes Launcher-Profil direkt mitziehen — aber nur, wenn der offizielle
   // Launcher gerade NICHT laeuft (sonst ueberschreibt er die Datei beim Beenden;
