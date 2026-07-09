@@ -28,6 +28,7 @@ const panel = $("settings-panel");
 const ramSlider = $("ram-slider");
 const ramVal = $("ram-val");
 const crashToggle = $("crash-toggle");
+const disclaimerToggle = $("disclaimer-toggle");
 const settingsApply = $("settings-apply");
 
 let busy = false;
@@ -164,13 +165,19 @@ crashToggle.addEventListener("click", () => {
   const on = crashToggle.getAttribute("aria-checked") !== "true";
   crashToggle.setAttribute("aria-checked", on ? "true" : "false");
 });
+disclaimerToggle.addEventListener("click", () => {
+  const on = disclaimerToggle.getAttribute("aria-checked") !== "true";
+  disclaimerToggle.setAttribute("aria-checked", on ? "true" : "false");
+});
 settingsApply.addEventListener("click", async () => {
   settingsApply.disabled = true;
   const gb = parseInt(ramSlider.value, 10);
   const crash = crashToggle.getAttribute("aria-checked") === "true";
+  const disclaimer = disclaimerToggle.getAttribute("aria-checked") === "true";
   try {
     await window.launcher.setRam(gb * 1024);
     await window.launcher.setCrashReports(crash);
+    await window.launcher.setDisclaimer(disclaimer);
     chipRam.textContent = gb + " GB";
   } catch (_e) { /* still schliessen */ }
   settingsApply.disabled = false;
@@ -188,6 +195,7 @@ async function refreshInfo() {
     if (overlay.hidden) {
       ramSlider.value = gb; ramVal.textContent = gb + " GB";
       if (typeof info.sendCrashReports === "boolean") crashToggle.setAttribute("aria-checked", info.sendCrashReports ? "true" : "false");
+      if (typeof info.showDisclaimer === "boolean") disclaimerToggle.setAttribute("aria-checked", info.showDisclaimer ? "true" : "false");
     }
     if (info.mcServer && info.mcServer.online) {
       serverStatus.classList.add("online"); serverStatus.classList.remove("offline");

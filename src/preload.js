@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("launcher", {
   getInfo: () => ipcRenderer.invoke("get-info"),
   setRam: (ramMb) => ipcRenderer.invoke("set-ram", ramMb),
   setCrashReports: (enabled) => ipcRenderer.invoke("set-crash-reports", enabled),
+  setDisclaimer: (enabled) => ipcRenderer.invoke("set-disclaimer", enabled),
   onStatus: (cb) => {
     ipcRenderer.on("status", (_event, data) => cb(data));
   },

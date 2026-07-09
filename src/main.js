@@ -88,7 +88,25 @@ function loadSettings() {
     typeof s.ramMb === "number" && s.ramMb >= RAM_MIN_MB && s.ramMb <= RAM_MAX_MB ? s.ramMb : defaultRamMb();
   // Crash-Reports standardmaessig AN (automatisch), aber abschaltbar
   const sendCrashReports = s.sendCrashReports !== false;
-  return { ramMb, sendCrashReports };
+  // Triggerwarnung beim Spielstart standardmaessig AN (sicherer Default), abschaltbar
+  const showDisclaimer = s.showDisclaimer !== false;
+  return { ramMb, sendCrashReports, showDisclaimer };
+}
+
+/**
+ * Schreibt die Client-Praeferenzen in die Spiel-Instanz — die RoleplayCore-Mod liest
+ * diese Datei beim Start (config/roleplaycore_client_prefs.json) und ueberspringt
+ * z.B. die Triggerwarnung, wenn der Spieler sie hier deaktiviert hat.
+ * Sicherer Default: existiert die Datei nicht, zeigt die Mod die Warnung.
+ */
+function writeClientPrefs() {
+  try {
+    const dir = path.join(INSTANCE_DIR, "config");
+    fs.mkdirSync(dir, { recursive: true });
+    const prefs = { showDisclaimer: loadSettings().showDisclaimer };
+    fs.writeFileSync(path.join(dir, "roleplaycore_client_prefs.json"),
+      JSON.stringify(prefs, null, 2), "utf8");
+  } catch (_e) { /* nicht kritisch — Mod nutzt sicheren Default */ }
 }
 function saveSettings(settings) {
   ensureDirs();
@@ -604,6 +622,7 @@ ipcMain.handle("play", async (event) => {
     return { ok: false, error: "Es laeuft bereits ein Vorgang." };
   }
   playRunning = true;
+  writeClientPrefs();   // Praeferenzen (z.B. Triggerwarnung) vor jedem Start in die Instanz spiegeln
 
   const send = (step, message, percent, isLog) => {
     if (!event.sender.isDestroyed()) {
@@ -960,6 +979,7 @@ ipcMain.handle("get-info", async () => {
     forgeVersion: CONFIG.FORGE_VERSION,
     ramMb: s.ramMb,
     sendCrashReports: s.sendCrashReports,
+    showDisclaimer: s.showDisclaimer,
     pack,
     mcServer,
   };
@@ -976,6 +996,14 @@ ipcMain.handle("set-crash-reports", (_event, enabled) => {
   settings.sendCrashReports = !!enabled;
   saveSettings(settings);
   return { ok: true, sendCrashReports: settings.sendCrashReports };
+});
+
+ipcMain.handle("set-disclaimer", (_event, enabled) => {
+  const settings = loadRawSettings();
+  settings.showDisclaimer = !!enabled;
+  saveSettings(settings);
+  writeClientPrefs();   // sofort in die Instanz spiegeln
+  return { ok: true, showDisclaimer: settings.showDisclaimer };
 });
 
 ipcMain.handle("install-update", () => {
