@@ -19,6 +19,10 @@
 
   <main>
     <div class="topbar">
+      <button class="account-pill" id="account-pill" type="button">
+        <span class="acc-dot" id="acc-dot"></span>
+        <span id="account-name">Nicht angemeldet</span>
+      </button>
       <button class="update-pill" id="update-pill" hidden>
         <span class="dot"></span>
         <span id="update-pill-text">Launcher-Update verfügbar</span>
@@ -26,6 +30,14 @@
       <button class="gear" id="settings-open" type="button" aria-label="Einstellungen">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#c9beb6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
       </button>
+      <div class="win-controls">
+        <button class="win-btn" id="win-min" type="button" aria-label="Minimieren"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5.5" width="10" height="1.2" fill="#c9beb6"/></svg></button>
+        <button class="win-btn win-x" id="win-close" type="button" aria-label="Schließen"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2 L10 10 M10 2 L2 10" stroke="#c9beb6" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>
+
+    <div class="account-menu" id="account-menu" hidden>
+      <button class="account-menu-item" id="account-logout" type="button">Abmelden</button>
     </div>
 
     <div class="center">
@@ -108,6 +120,46 @@
 
       <button class="btn-apply" id="settings-apply" type="button">Übernehmen</button>
       <div class="apply-hint">ESC schließt ebenfalls</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="login-overlay" hidden>
+    <div class="panel" id="login-panel">
+      <div class="panel-title">MIT MICROSOFT ANMELDEN</div>
+
+      <div id="login-intro" class="login-block">
+        <p class="login-text">Melde dich mit deinem Microsoft-Konto an.</p>
+        <button class="btn-apply" id="login-start" type="button">Anmeldung starten</button>
+        <p class="login-note">Direkt bei Microsoft — wir sehen keine Zugangsdaten.</p>
+      </div>
+
+      <div id="login-code" class="login-block" hidden>
+        <p class="login-text">Öffne <b id="login-url">microsoft.com/link</b> und gib ein:</p>
+        <button class="login-code-box" id="login-code-value" type="button" title="Zum Kopieren klicken">—</button>
+        <div class="login-code-actions">
+          <button class="btn-secondary" id="login-copy" type="button">Code kopieren</button>
+          <button class="btn-secondary" id="login-open" type="button">Öffnen</button>
+        </div>
+        <p class="login-note" id="login-status">Warte auf Bestätigung …</p>
+      </div>
+
+      <div id="login-error" class="login-block" hidden>
+        <p class="login-text login-err" id="login-error-text">Anmeldung fehlgeschlagen.</p>
+        <button class="btn-apply" id="login-retry" type="button">Erneut versuchen</button>
+      </div>
+
+      <div class="apply-hint"><button class="link-btn" id="login-close" type="button">Schließen</button></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="logout-overlay" hidden>
+    <div class="panel">
+      <div class="panel-title">ABMELDEN</div>
+      <p class="login-text" id="logout-text">Wirklich abmelden?</p>
+      <div class="login-code-actions">
+        <button class="btn-secondary" id="logout-cancel" type="button">Abbrechen</button>
+        <button class="btn-apply btn-apply-inline" id="logout-confirm" type="button">Abmelden</button>
+      </div>
     </div>
   </div>
 

@@ -30,6 +30,35 @@ const ramVal = $("ram-val");
 const crashToggle = $("crash-toggle");
 const disclaimerToggle = $("disclaimer-toggle");
 const settingsApply = $("settings-apply");
+// Stufe 2: Microsoft-Login
+const accountPill = $("account-pill");
+const accountName = $("account-name");
+const accountMenu = $("account-menu");
+const accountLogout = $("account-logout");
+const loginOverlay = $("login-overlay");
+const loginIntro = $("login-intro");
+const loginCodeBlock = $("login-code");
+const loginErrorBlock = $("login-error");
+const loginStart = $("login-start");
+const loginOpen = $("login-open");
+const loginCopy = $("login-copy");
+const loginUrl = $("login-url");
+const loginCodeValue = $("login-code-value");
+const loginStatus = $("login-status");
+const loginErrorText = $("login-error-text");
+const loginRetry = $("login-retry");
+const loginClose = $("login-close");
+const logoutOverlay = $("logout-overlay");
+const logoutCancel = $("logout-cancel");
+const logoutConfirm = $("logout-confirm");
+const playText = document.querySelector("#btn-ready .play-text");
+const playIcon = document.querySelector("#btn-ready .play-icon");
+const winMin = $("win-min");
+const winCloseBtn = $("win-close");
+
+let loggedIn = false;
+let lastVerifyUrl = "https://microsoft.com/link";
+let lastCode = "";
 
 let busy = false;
 let overall = 0;
@@ -98,9 +127,100 @@ window.launcher.onStatus((s) => {
   if (s.step && s.step !== "error" && s.step !== "done") updateProgress(s.step, s.percent);
 });
 
+// ---- Fenster-Steuerung (rahmenlos) ----
+winMin.addEventListener("click", () => window.launcher.winMinimize());
+winCloseBtn.addEventListener("click", () => window.launcher.winClose());
+
+// ---- Microsoft-Login ----
+function setAccount(name) {
+  loggedIn = !!name;
+  accountName.textContent = name || "Anmelden";
+  accountPill.classList.toggle("online", loggedIn);
+  // Hauptknopf: eingeloggt -> SPIELEN (mit Play-Icon), sonst -> ANMELDEN
+  if (playText) playText.textContent = loggedIn ? "SPIELEN" : "ANMELDEN";
+  if (playIcon) playIcon.style.display = loggedIn ? "" : "none";
+  if (!loggedIn && accountMenu) accountMenu.hidden = true;
+}
+function showLoginBlock(which) {
+  loginIntro.hidden = which !== "intro";
+  loginCodeBlock.hidden = which !== "code";
+  loginErrorBlock.hidden = which !== "error";
+}
+function openLogin() {
+  showLoginBlock("intro");
+  loginOverlay.hidden = false;
+  loginOverlay.classList.remove("closing");
+}
+function closeLogin() {
+  window.launcher.authCancel();
+  loginOverlay.classList.add("closing");
+  setTimeout(() => { loginOverlay.hidden = true; loginOverlay.classList.remove("closing"); }, 200);
+}
+async function doLogin() {
+  showLoginBlock("code");
+  loginCodeValue.textContent = "…";
+  loginStatus.textContent = "Warte auf Bestätigung …";
+  try {
+    const r = await window.launcher.authLogin();
+    if (r.ok) {
+      setAccount(r.name);
+      loginOverlay.hidden = true;
+      appendLog("Angemeldet als " + r.name);
+      return true;
+    }
+    if (r.cancelled) { loginOverlay.hidden = true; return false; }
+    loginErrorText.textContent = r.error || "Anmeldung fehlgeschlagen.";
+    showLoginBlock("error");
+  } catch (err) {
+    loginErrorText.textContent = err.message || "Anmeldung fehlgeschlagen.";
+    showLoginBlock("error");
+  }
+  return false;
+}
+window.launcher.onAuthCode((data) => {
+  lastVerifyUrl = data.verificationUri || lastVerifyUrl;
+  lastCode = data.userCode || "";
+  loginUrl.textContent = (data.verificationUri || "microsoft.com/link").replace(/^https?:\/\//, "");
+  loginCodeValue.textContent = lastCode || "—";
+  loginStatus.textContent = "Warte auf Bestätigung im Browser …";
+});
+function copyCode() {
+  if (!lastCode) return;
+  window.launcher.copyText(lastCode);
+  loginCopy.textContent = "Kopiert ✓";
+  setTimeout(() => { loginCopy.textContent = "Code kopieren"; }, 1500);
+}
+
+// Account-Pill: eingeloggt -> Menü (Abmelden); sonst -> Login
+accountPill.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (loggedIn) accountMenu.hidden = !accountMenu.hidden;
+  else openLogin();
+});
+document.addEventListener("click", () => { if (accountMenu) accountMenu.hidden = true; });
+accountLogout.addEventListener("click", () => {
+  accountMenu.hidden = true;
+  logoutOverlay.hidden = false;
+});
+logoutCancel.addEventListener("click", () => { logoutOverlay.hidden = true; });
+logoutConfirm.addEventListener("click", async () => {
+  await window.launcher.authLogout();
+  setAccount(null);
+  logoutOverlay.hidden = true;
+});
+
+loginStart.addEventListener("click", doLogin);
+loginRetry.addEventListener("click", doLogin);
+loginOpen.addEventListener("click", () => window.launcher.openUrl(lastVerifyUrl));
+loginCopy.addEventListener("click", copyCode);
+loginCodeValue.addEventListener("click", copyCode);
+loginClose.addEventListener("click", closeLogin);
+
 // ---- Spielen-Ablauf ----
 async function startPlay() {
   if (busy) return;
+  // Stufe 2: nicht angemeldet -> erst Login
+  if (!loggedIn) { openLogin(); return; }
   busy = true;
   overall = 0;
   setWork("Starte …", 0);
@@ -113,6 +233,12 @@ async function startPlay() {
       setWork(null, 100);
       showPhase("startet");
       setTimeout(() => { showPhase("bereit"); busy = false; refreshInfo(); }, 2200);
+    } else if (r && r.needLogin) {
+      // Token abgelaufen/fehlt -> zurueck zum Login
+      setAccount(null);
+      showPhase("bereit");
+      busy = false;
+      openLogin();
     } else {
       const msg = (r && r.error) ? r.error : "Unbekannter Fehler.";
       errTitle.textContent = shortError(msg);
@@ -192,6 +318,8 @@ async function refreshInfo() {
     const gb = Math.round(info.ramMb / 1024);
     chipRam.textContent = gb + " GB";
     chipModpack.textContent = info.pack && info.pack.ok && info.pack.version ? "v" + info.pack.version : "—";
+    if (info.account && info.account.name) setAccount(info.account.name);
+    else if (!loggedIn) setAccount(null);
     if (overlay.hidden) {
       ramSlider.value = gb; ramVal.textContent = gb + " GB";
       if (typeof info.sendCrashReports === "boolean") crashToggle.setAttribute("aria-checked", info.sendCrashReports ? "true" : "false");

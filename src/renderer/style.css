@@ -15,14 +15,16 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+html { background: transparent; }
 body {
+  border-radius: 14px; border: 1px solid rgba(255,138,76,0.18);   /* rahmenloses Fenster, runde Ecken */
   background: radial-gradient(120% 95% at 50% 34%, #3a160a 0%, #1d0a06 46%, #0a0503 82%);
   color: var(--paper-100); font-family: var(--font-body);
   overflow: hidden; user-select: none;
 }
 
 /* ============ Hintergrund-Bühne (kein Grid) ============ */
-.stage { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.stage { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .glow-center {
   position: absolute; left: 50%; top: 36%; width: 74vmin; height: 74vmin; min-width: 560px; min-height: 560px;
   transform: translate(-50%, -50%);
@@ -209,3 +211,55 @@ body.boot .footer { animation: lch-rise 0.45s var(--ease) 1.2s both; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ============ Stufe 2: Microsoft-Login ============ */
+.account-pill { display:inline-flex; align-items:center; gap:8px; margin-right:auto; padding:9px 16px; border-radius:999px;
+  background:rgba(12,6,3,0.72); border:1px solid rgba(255,120,60,0.25); color:var(--paper-300);
+  font-family:var(--font-body); font-weight:700; font-size:13px; cursor:pointer; transition:border-color 160ms, color 160ms; }
+.account-pill:hover { border-color:rgba(255,138,76,0.6); color:var(--paper-100); }
+.acc-dot { width:7px; height:7px; border-radius:50%; background:var(--paper-500); }
+.account-pill.online .acc-dot { background:var(--online); box-shadow:0 0 8px var(--online); }
+
+.login-block { margin-top:6px; }
+.login-text { font-size:14px; color:var(--paper-300); line-height:1.55; margin:0 0 10px; }
+.login-note { font-size:12px; color:var(--paper-500); line-height:1.5; margin:10px 0 0; }
+.login-err { color:#ff8a6a; }
+.login-url { font-family:var(--font-body); font-weight:800; font-size:16px; color:var(--paper-100); text-align:center;
+  padding:10px; border-radius:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(255,120,60,0.22); }
+.login-code-box { font-family:"Press Start 2P","Courier New",monospace; font-size:22px; letter-spacing:4px; color:var(--ember-500);
+  text-align:center; padding:14px; margin-top:6px; border-radius:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,138,76,0.45); }
+.btn-secondary { display:block; width:100%; margin-top:10px; padding:10px 0; border:1px solid rgba(255,120,60,0.35); border-radius:10px;
+  background:rgba(36,22,16,0.7); color:var(--paper-100); font-family:var(--font-body); font-weight:700; font-size:14px; cursor:pointer; transition:background 140ms, border-color 140ms; }
+.btn-secondary:hover { background:rgba(36,22,16,1); border-color:rgba(255,138,76,0.6); }
+.link-btn { background:none; border:none; color:var(--paper-500); font-family:var(--font-body); font-weight:600; font-size:12px; cursor:pointer; padding:4px 8px; }
+.link-btn:hover { color:var(--paper-300); }
+.apply-hint { display:flex; gap:14px; justify-content:center; }
+
+.login-step2 { margin-top:16px; }
+
+/* ============ Rahmenloses Fenster: Titelleiste + Steuerung ============ */
+.topbar { -webkit-app-region: drag; }
+.account-pill, .update-pill, .gear, .win-btn { -webkit-app-region: no-drag; }
+.win-controls { display:inline-flex; gap:4px; margin-left:2px; }
+.win-btn { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px;
+  background:transparent; border:none; cursor:pointer; transition:background 120ms; }
+.win-btn:hover { background:rgba(255,255,255,0.08); }
+.win-btn.win-x:hover { background:rgba(192,57,43,0.85); }
+.win-btn.win-x:hover svg path { stroke:#fff; }
+
+/* ============ Account-Menü (Abmelden) ============ */
+.account-menu { position:absolute; top:54px; left:22px; z-index:60; min-width:150px; padding:6px;
+  background:linear-gradient(180deg,#1e110b,#140a06); border:1px solid rgba(255,138,76,0.4);
+  border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,0.6); }
+.account-menu[hidden] { display:none; }
+.account-menu-item { display:block; width:100%; text-align:left; padding:9px 12px; border:none; border-radius:8px;
+  background:transparent; color:var(--paper-300); font-family:var(--font-body); font-weight:700; font-size:13px; cursor:pointer; }
+.account-menu-item:hover { background:rgba(192,57,43,0.18); color:#ff8a6a; }
+
+/* ============ Login: Aktionen + Abmelde-Dialog ============ */
+.login-code-actions { display:flex; gap:10px; margin-top:12px; }
+.login-code-actions .btn-secondary { margin-top:0; }
+.login-code-box { display:block; width:100%; cursor:pointer; transition:border-color 140ms; }
+.login-code-box:hover { border-color:rgba(255,138,76,0.8); }
+.btn-apply-inline { margin-top:0; flex:1; }
+.login-code-actions .btn-apply-inline { padding:10px 0; }

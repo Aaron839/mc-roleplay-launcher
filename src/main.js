@@ -12,6 +12,8 @@ const https = require("https");
 const net = require("net");
 const dns = require("dns").promises;
 const { spawn } = require("child_process");
+const auth = require("./auth");
+const mcLaunch = require("./launch");
 
 // ---------------------------------------------------------------------------
 // CONFIG — zentrale Konstanten
@@ -37,6 +39,8 @@ const RUNTIME_DIR = path.join(DATA_DIR, "runtime"); // eigenes Java
 const CACHE_DIR = path.join(DATA_DIR, "cache"); // Downloads
 
 const MC_DIR = path.join(APPDATA, ".minecraft");
+const NATIVES_DIR = path.join(DATA_DIR, "natives");   // Stufe 2: eigene natives-Extraktion
+const ACCOUNT_PATH = path.join(DATA_DIR, "account.dat"); // verschluesselter Refresh-Token
 const MC_MISSING_MSG =
   "Der offizielle Minecraft Launcher wurde nicht gefunden. " +
   "Bitte einmal den offiziellen Minecraft Launcher installieren/starten, danach hier erneut auf SPIELEN klicken.";
@@ -448,7 +452,31 @@ async function syncPack(javaExe, send, opts) {
   try {
     fs.writeFileSync(SYNC_OK_MARKER(), new Date().toISOString(), "utf8");
   } catch (_e) { /* Marker ist optional */ }
+  enforceLocalMods(send);   // persoenliche Mod-Entscheidungen NACH dem Sync durchsetzen
   send("sync", "Modpack ist aktuell.", 100);
+}
+
+// ---------------------------------------------------------------------------
+// Persoenliche ("lokale") Mods: nur fuer diese Instanz, nie auf dem Server.
+// Das Admin-Tool schreibt instance/mcrp-local.json { removed:[...] }.
+// packwiz laesst selbst hinzugefuegte Jars in Ruhe, holt aber geloeschte Pack-Mods
+// wieder zurueck -> hier nach dem Sync erneut entfernen, damit die Entscheidung haelt.
+// ---------------------------------------------------------------------------
+const LOCAL_MODS_FILE = path.join(INSTANCE_DIR, "mcrp-local.json");
+function enforceLocalMods(send) {
+  try {
+    if (!fs.existsSync(LOCAL_MODS_FILE)) return;
+    const cfg = JSON.parse(fs.readFileSync(LOCAL_MODS_FILE, "utf8"));
+    const removed = Array.isArray(cfg.removed) ? cfg.removed : [];
+    const modsDir = path.join(INSTANCE_DIR, "mods");
+    let n = 0;
+    for (const name of removed) {
+      const base = path.basename(String(name));   // Sicherheitsgrenze: nur Dateiname
+      const p = path.join(modsDir, base);
+      if (fs.existsSync(p)) { try { fs.unlinkSync(p); n++; } catch (_e) {} }
+    }
+    if (n > 0 && send) send("sync", n + " persoenlich entfernte Mod(s) angewendet.", null, true);
+  } catch (_e) { /* lokale Anpassungen sind optional */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -582,6 +610,31 @@ function spawnDetached(cmd, args) {
   });
 }
 
+// ── Stufe 2: Direktstart-Voraussetzungen ────────────────────────────────────
+/** Sind Vanilla-Client-Jar + passender Asset-Index vorhanden (dann koennen wir selbst starten)? */
+function directLaunchReady() {
+  try {
+    const forge = mcLaunch.readVersion(MC_DIR, CONFIG.FORGE_VERSION);
+    const vanillaJar = path.join(MC_DIR, "versions", forge.inheritsFrom, forge.inheritsFrom + ".jar");
+    const vanilla = mcLaunch.readVersion(MC_DIR, forge.inheritsFrom);
+    const idxId = (vanilla.assetIndex && vanilla.assetIndex.id) || forge.inheritsFrom;
+    const idx = path.join(MC_DIR, "assets", "indexes", idxId + ".json");
+    return fs.existsSync(vanillaJar) && fs.existsSync(idx);
+  } catch (_e) { return false; }
+}
+function directLaunchCfg(javaExe) {
+  return {
+    mcDir: MC_DIR,
+    instanceDir: INSTANCE_DIR,
+    nativesDir: NATIVES_DIR,
+    javaExe: javaExe,
+    ramArgs: javaArgsFor(loadSettings().ramMb).split(/\s+/).filter(Boolean),
+    forgeVersionId: CONFIG.FORGE_VERSION,
+    launcherName: "mc-roleplay-launcher",
+    launcherVersion: app.getVersion(),
+  };
+}
+
 async function launchOfficial(send, launcherWasOpen) {
   send("launch", "Starte den offiziellen Minecraft Launcher ...", null);
 
@@ -641,12 +694,41 @@ ipcMain.handle("play", async (event) => {
     if (!fs.existsSync(MC_DIR) || profileFilePaths().length === 0) {
       throw new Error(MC_MISSING_MSG);
     }
+    // Stufe 2: stiller Microsoft-Login aus gespeichertem Token (Refresh).
+    send("java", "Melde bei Microsoft an ...", null, true);
+    const session = await auth.silentSession();
+    if (!session) {
+      return { ok: false, needLogin: true,
+        error: "Bitte zuerst mit deinem Microsoft-Konto anmelden." };
+    }
     const javaExe = await findJava(send);
     send("java", "Java gefunden: " + javaExe, 100, true);
     await syncPack(javaExe, send, { allowOffline: true });
     await ensureForge(javaExe, send);
-    const { launcherWasOpen } = await ensureProfile(send);
-    await launchOfficial(send, launcherWasOpen);
+
+    // Direktstart braucht die Vanilla-Client-Jar + Assets. Fehlen sie (ganz neuer PC ohne
+    // je gestarteten offiziellen Launcher), fallen wir auf den offiziellen Launcher zurueck,
+    // der sie herunterlaedt. Bestandsspieler starten direkt — der offizielle Launcher entfaellt.
+    if (!directLaunchReady()) {
+      const { launcherWasOpen } = await ensureProfile(send);
+      await launchOfficial(send, launcherWasOpen);
+      return { ok: true };
+    }
+    send("launch", "Starte Minecraft ...", null);
+    const { child, logFile } = await mcLaunch.launchGame(directLaunchCfg(javaExe), session);
+    // Fruehsterbe-Wache: stirbt der Java-Prozess in den ersten 15 s, schlug der Start fehl
+    // -> echten Fehler aus dem Spiel-Log an die Oberflaeche bringen (nie stumm scheitern).
+    const earlyExit = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 15000);
+      child.once("exit", () => { clearTimeout(timer); resolve(true); });
+    });
+    if (earlyExit) {
+      let tail = "";
+      try { tail = fs.readFileSync(logFile, "utf8").slice(-700).trim(); } catch (_e) {}
+      throw new Error("Minecraft-Start fehlgeschlagen (Prozess sofort beendet)." +
+        (tail ? "\nLetzte Zeilen aus dem Log:\n" + tail : " (Log leer: " + logFile + ")"));
+    }
+    send("done", "Minecraft startet — viel Spass, " + session.name + "!", 100);
     return { ok: true };
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
@@ -980,6 +1062,7 @@ ipcMain.handle("get-info", async () => {
     ramMb: s.ramMb,
     sendCrashReports: s.sendCrashReports,
     showDisclaimer: s.showDisclaimer,
+    account: auth.cachedAccount(),   // {name,uuid} oder null
     pack,
     mcServer,
   };
@@ -1010,6 +1093,37 @@ ipcMain.handle("install-update", () => {
   if (app.isPackaged) autoUpdater.quitAndInstall();
   return { ok: true };
 });
+
+// ── Microsoft-Login (Stufe 2) ───────────────────────────────────────────────
+let loginCancel = false;
+ipcMain.handle("auth-status", () => {
+  const acc = auth.cachedAccount();
+  return { loggedIn: !!acc, name: acc ? acc.name : null };
+});
+ipcMain.handle("auth-login", async (event) => {
+  loginCancel = false;
+  try {
+    const session = await auth.login(
+      (code) => { if (!event.sender.isDestroyed()) event.sender.send("auth-code", code); },
+      () => loginCancel);
+    return { ok: true, name: session.name };
+  } catch (err) {
+    const m = err && err.message ? err.message : String(err);
+    if (m === "CANCELLED") return { ok: false, cancelled: true };
+    return { ok: false, error: m };
+  }
+});
+ipcMain.handle("auth-cancel", () => { loginCancel = true; return { ok: true }; });
+ipcMain.handle("auth-logout", () => { auth.logout(); return { ok: true }; });
+ipcMain.handle("open-url", (_e, url) => {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) require("electron").shell.openExternal(url);
+  return { ok: true };
+});
+
+// Rahmenloses Fenster: eigene Titelleisten-Knoepfe
+ipcMain.handle("win-minimize", () => { if (mainWindow) mainWindow.minimize(); return { ok: true }; });
+ipcMain.handle("win-close", () => { if (mainWindow) mainWindow.close(); return { ok: true }; });
+ipcMain.handle("clipboard-write", (_e, t) => { require("electron").clipboard.writeText(String(t || "")); return { ok: true }; });
 
 ipcMain.handle("set-ram", async (_event, ramMb) => {
   const mb = Math.round(Number(ramMb));
@@ -1135,11 +1249,11 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 960,
     height: 640,
-    minWidth: 880,
-    minHeight: 580,
-    resizable: true,
+    resizable: false,          // rahmenlos + transparent -> feste Groesse, saubere runde Ecken
+    frame: false,              // eigene Titelleiste (Minimieren/Schliessen im Renderer)
+    transparent: true,         // runde Ecken via CSS border-radius sichtbar
     autoHideMenuBar: true,
-    backgroundColor: "#0a0503",
+    backgroundColor: "#00000000",
     title: "MC-ROLEPLAY.DE",
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
@@ -1158,9 +1272,55 @@ function createWindow() {
 // harten Absturz) machte den Launcher sonst dauerhaft unstartbar. Doppelstarts
 // sind unkritisch — der playRunning-Guard verhindert parallele Sync-Vorgaenge.
 app.whenReady().then(async () => {
+  auth.setAccountPath(ACCOUNT_PATH);   // Stufe 2: wo der verschluesselte Token liegt
   if (IS_SMOKE) {
     console.log("SMOKE OK");
     app.quit();
+    return;
+  }
+  if (process.argv.includes("--launch-test")) {
+    // Diagnose: echter End-to-End-Start (stille Anmeldung + Direktstart), Ausgabe in Konsole.
+    auth.setAccountPath(ACCOUNT_PATH);
+    try {
+      console.log("[test] stille Anmeldung ...");
+      const session = await auth.silentSession();
+      if (!session) { console.log("LAUNCH-TEST: KEIN KONTO (needLogin)"); app.exit(2); return; }
+      console.log("[test] angemeldet als " + session.name + " (" + session.uuid + ")");
+      const javaExe = await findJava(() => {});
+      console.log("[test] java: " + javaExe + " | directLaunchReady=" + directLaunchReady());
+      const { child, logFile } = await mcLaunch.launchGame(directLaunchCfg(javaExe), session);
+      console.log("[test] gestartet, PID=" + child.pid + " | log: " + logFile);
+      const died = await new Promise((res) => {
+        const t = setTimeout(() => res(false), 60000);
+        child.once("exit", (code) => { clearTimeout(t); res(true); });
+      });
+      if (died) {
+        console.log("LAUNCH-TEST: PROZESS GESTORBEN — Log-Ende:");
+        try { console.log(fs.readFileSync(logFile, "utf8").slice(-1500)); } catch (_e) {}
+        app.exit(1);
+      } else {
+        console.log("LAUNCH-TEST OK — Prozess laeuft nach 60s noch (Minecraft laedt/laeuft).");
+        try { process.kill(child.pid); console.log("[test] Testprozess beendet."); } catch (_e) {}
+        app.exit(0);
+      }
+    } catch (e) {
+      console.error("LAUNCH-TEST FEHLER: " + (e && e.stack ? e.stack : e));
+      app.exit(1);
+    }
+    return;
+  }
+  if (process.argv.includes("--launch-print")) {
+    // Diagnose: baut den Startbefehl mit Platzhalter-Session und gibt ihn aus (startet NICHT).
+    try {
+      const dummy = { name: "TestPlayer", uuid: "00000000000000000000000000000000",
+        accessToken: "TEST_TOKEN", xuid: "0", userType: "msa" };
+      const args = mcLaunch.buildArgs(directLaunchCfg("java.exe"), dummy);
+      const line = ["java", ...args].join(" ");
+      console.log("READY=" + directLaunchReady() + " ARGS=" + args.length + " LEN=" + line.length);
+      console.log(line);
+      console.log("LAUNCH-PRINT OK");
+    } catch (e) { console.error("LAUNCH-PRINT FEHLER: " + (e && e.stack ? e.stack : e)); }
+    app.exit(0);
     return;
   }
   if (IS_SELFTEST) {

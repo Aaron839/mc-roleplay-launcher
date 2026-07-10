@@ -20,9 +20,16 @@ vertraut.
 
 ## Was der Launcher mit deinen Daten macht: nichts
 
-- **Kein Passwort.** Der Launcher fragt dich **nie** nach deinem Minecraft- oder
-  Microsoft-Passwort. Der Login läuft über den **offiziellen** Minecraft
-  Launcher — unser Client startet ihn nur.
+- **Kein Passwort.** Der Launcher fragt dich **nie** nach deinem Passwort. Die
+  Anmeldung läuft **direkt bei Microsoft** (offizieller Device-Code-Flow): Du
+  bestätigst einen Code auf `microsoft.com/link` — dein Passwort tippst du nur
+  bei Microsoft ein, nie bei uns. Unsere Server sind daran **nicht beteiligt**
+  und sehen weder Passwort noch Tokens. Der Code dazu steht offen in
+  [`src/auth.js`](src/auth.js).
+- **Token-Speicherung:** Damit du nicht bei jedem Start neu bestätigen musst,
+  speichert der Launcher einen Microsoft-Refresh-Token **lokal auf deinem PC**,
+  verschlüsselt mit Windows-Bordmitteln (DPAPI via Electron `safeStorage`).
+  Er verlässt deinen Rechner nur Richtung Microsoft/Mojang. „Abmelden" löscht ihn.
 - **Kein Tracking, kein Konto bei uns.** Der Client verfolgt dich nicht und legt
   kein Nutzerprofil an.
 - **Eine Ausnahme, ehrlich gesagt:** Wenn *Minecraft abstürzt*, wird der
@@ -42,7 +49,7 @@ vertraut.
   | `modrinth.com`, `curseforge.com` | Fremd-Mods (direkt von den Autoren) |
   | `maven.minecraftforge.net` | der Forge-Installer |
   | `adoptium.net` | Java-Laufzeit (falls nicht vorhanden) |
-  | Mojang-Server | Vanilla-Minecraft (über den offiziellen Launcher) |
+  | `login.microsoftonline.com`, `*.xboxlive.com`, `api.minecraftservices.com` | Microsoft-/Minecraft-Anmeldung (offizieller Weg, direkt — ohne Umweg über uns) |
   | `mc-roleplay.net` | reine Server-Status-Abfrage (online? wie viele Spieler?) |
 
 Du kannst das im Code nachvollziehen — alle Netzwerkzugriffe stehen in
@@ -50,11 +57,13 @@ Du kannst das im Code nachvollziehen — alle Netzwerkzugriffe stehen in
 
 ## Was er beim Klick auf „Spielen" tut
 
-1. Sucht eine passende Java-Version (oder lädt Java 17 von Adoptium).
-2. Synchronisiert das Modpack von `mc-roleplay.de` (nur geänderte Dateien).
-3. Installiert Forge 1.20.1, falls nötig.
-4. Legt ein Profil im offiziellen Minecraft Launcher an (mit passendem RAM).
-5. Startet den offiziellen Minecraft Launcher — dort loggst du dich wie gewohnt ein.
+1. Meldet dich still bei Microsoft an (gespeicherter Token — beim ersten Mal einmalig per Code).
+2. Sucht eine passende Java-Version (oder lädt Java 17 von Adoptium).
+3. Synchronisiert das Modpack von `mc-roleplay.de` (nur geänderte Dateien).
+4. Installiert Forge 1.20.1, falls nötig.
+5. **Startet Minecraft direkt** — der offizielle Minecraft Launcher wird nicht mehr gebraucht.
+   (Nur auf einem ganz frischen PC ohne Vanilla-Dateien fällt er einmalig auf den
+   offiziellen Launcher zurück, der sie herunterlädt.)
 
 ## Selbst bauen
 
