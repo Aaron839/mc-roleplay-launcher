@@ -52,21 +52,63 @@ function javaArgsFor(ramMb) {
   );
 }
 
-// RAM-Grenzen: identisch mit dem Slider im Renderer (4-16 GB)
-const RAM_MIN_MB = 4096;
+// RAM-Grenzen: identisch mit dem Slider im Renderer (8-16 GB).
+// VORGABE (Aaron, 13.07.2026): Das Modpack braucht IMMER mindestens 8 GB Heap —
+// weniger ist nicht einstellbar. Wer systemseitig nicht genug Speicher frei hat,
+// wird beim Start gewarnt und das Spiel startet NICHT (checkMemoryPreflight),
+// statt wie frueher den Heap zu verkleinern.
+const RAM_MIN_MB = 8192;
 const RAM_MAX_MB = 16384;
 
-/** Standard-RAM abhaengig vom physischen Speicher.
- *  WICHTIG (Crash-Analyse Luis, Juli 2026): Der Minecraft-Prozess committet mit diesem
- *  Modpack ~8-9 GB NATIV zusaetzlich zum Java-Heap (Treiber/Netty/JIT/Mods). Auf einem
- *  16-GB-PC fuehrt Xmx=8G daher in die volle Auslagerungsdatei -> "insufficient memory"
- *  Abstuerze. 16-GB-Systeme bekommen deshalb 6G — das Pack laeuft damit sauber. */
 function defaultRamMb() {
-  const totalMb = Math.round(os.totalmem() / (1024 * 1024));
-  if (totalMb >= 26000) return 8192;   // 32 GB+: genug Luft fuer 8G Heap
-  if (totalMb >= 14000) return 6144;   // 16 GB: 6G Heap = stabil (8G -> Pagefile-Tod)
-  if (totalMb >= 10000) return 5120;   // 12 GB
-  return RAM_MIN_MB;                   // 8 GB
+  return RAM_MIN_MB;   // 8 GB Pflicht-Minimum fuer alle Systeme
+}
+
+/**
+ * Speicher-Preflight vor dem Spielstart (Erkenntnis aus den Crash-Analysen Juli 2026):
+ * Der Minecraft-Prozess committet mit diesem Modpack mehrere GB NATIV zusaetzlich zum
+ * Java-Heap (Treiber/Netty/JIT/Mods). Ist der system-weite Commit (RAM+Auslagerungsdatei)
+ * beim Start schon zu knapp, stirbt das Spiel spaeter mit "insufficient memory" oder
+ * reisst sogar den Grafiktreiber mit. Deshalb: vorher pruefen, verstaendlich warnen,
+ * NICHT starten. Bei Messfehlern wird durchgewunken (niemals faelschlich blockieren).
+ */
+function checkMemoryPreflight(ramMb) {
+  const totalPhysMb = Math.round(os.totalmem() / (1024 * 1024));
+  // Harte Untergrenze: 8 GB Heap + Betriebssystem + Spiel-Overhead passen physisch
+  // nicht in einen Rechner unter ~12 GB — da hilft auch keine Auslagerungsdatei.
+  if (totalPhysMb < 11500) {
+    return {
+      ok: false,
+      message:
+        `Dein PC hat nur ${Math.round(totalPhysMb / 1024)} GB Arbeitsspeicher. ` +
+        `Das Modpack benoetigt mindestens 8 GB Java-Speicher plus System — ` +
+        `dafuer sind mindestens 12 GB RAM noetig (empfohlen: 16 GB).`,
+    };
+  }
+  // Freien system-weiten Commit (RAM + Pagefile) abfragen. FreeVirtualMemory ist in KB.
+  let freeCommitMb = -1;
+  try {
+    const out = require("child_process").execSync(
+      'powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory"',
+      { timeout: 8000, windowsHide: true, encoding: "utf8" }
+    );
+    const kb = parseInt(String(out).trim(), 10);
+    if (Number.isFinite(kb) && kb > 0) freeCommitMb = Math.round(kb / 1024);
+  } catch (_e) { /* Messung fehlgeschlagen -> nicht blockieren */ }
+
+  // Heap + konservativer nativer Overhead muessen ins freie Commit passen.
+  const requiredMb = ramMb + 5120;
+  if (freeCommitMb >= 0 && freeCommitMb < requiredMb) {
+    return {
+      ok: false,
+      message:
+        `Nicht genug freier Arbeitsspeicher: ${(freeCommitMb / 1024).toFixed(1)} GB verfuegbar, ` +
+        `benoetigt werden ~${Math.round(requiredMb / 1024)} GB (inkl. Auslagerungsdatei). ` +
+        `Schliesse andere Programme (Browser, OBS, ...) oder stelle die Windows-Auslagerungsdatei ` +
+        `auf "automatisch verwalten", und versuche es dann erneut.`,
+    };
+  }
+  return { ok: true };
 }
 
 // Persistente Einstellungen (%APPDATA%\MC-ROLEPLAY.DE\settings.json)
@@ -75,17 +117,14 @@ function loadSettings() {
   let s = {};
   try { s = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) || {}; } catch (_e) { /* Defaults */ }
 
-  // Einmal-Migration v0.3.6: Der alte Pauschal-Default (8192) wurde bei manchen Spielern
-  // als Wert persistiert, ohne dass sie ihn bewusst gewaehlt haben (Uebernehmen-Klick).
-  // Auf Systemen, wo 8192 nachweislich Abstuerze verursacht (< 26 GB RAM), einmalig auf
-  // die neue Empfehlung absenken. Wer danach bewusst hochstellt (ramCustom), bleibt hoch.
-  if (typeof s.ramMb === "number" && s.ramMb === 8192 && !s.ramCustom && !s.ramMigratedV036) {
-    const recommended = defaultRamMb();
-    if (recommended < 8192) {
-      s.ramMb = recommended;
-      s.ramMigratedV036 = true;
-      try { saveSettings(s); } catch (_e) { /* beim naechsten Speichern */ }
-    }
+  // Einmal-Migration v0.4.1: 8 GB sind jetzt Pflicht-Minimum (Aaron-Vorgabe) —
+  // alle persistierten Werte darunter (inkl. der frueheren v0.3.6-Absenkung auf
+  // 6144/5120) werden einmalig angehoben. Der Schutz vor "insufficient memory"
+  // laeuft jetzt ueber checkMemoryPreflight statt ueber kleinere Heaps.
+  if (typeof s.ramMb === "number" && s.ramMb < RAM_MIN_MB && !s.ramMigratedV041) {
+    s.ramMb = RAM_MIN_MB;
+    s.ramMigratedV041 = true;
+    try { saveSettings(s); } catch (_e) { /* beim naechsten Speichern */ }
   }
 
   const ramMb =
@@ -690,6 +729,13 @@ ipcMain.handle("play", async (event) => {
 
   try {
     ensureDirs();
+    // Speicher-Preflight: Modpack braucht 8+ GB Heap — reicht der Systemspeicher
+    // nicht, wird verstaendlich gewarnt und NICHT gestartet (statt spaeter zu crashen).
+    send("java", "Pruefe Arbeitsspeicher ...", null, true);
+    const mem = checkMemoryPreflight(loadSettings().ramMb);
+    if (!mem.ok) {
+      throw new Error(mem.message);
+    }
     // Preflight VOR dem 1,5-GB-Sync: Ist der offizielle Launcher ueberhaupt da?
     if (!fs.existsSync(MC_DIR) || profileFilePaths().length === 0) {
       throw new Error(MC_MISSING_MSG);
@@ -839,6 +885,10 @@ function slpPing(host, port, timeoutMs = 4000) {
     let buf = Buffer.alloc(0);
 
     socket.on("connect", () => {
+      // WICHTIG: Im Handshake steht das SRV-ZIEL (play.mc-roleplay.net) — GENAU wie
+      // beim echten MC-Client (der nach SRV-Aufloesung das Ziel sendet, wiki.vg).
+      // TCPShield matcht darueber das Netzwerk; die Root-Domain ist dort NICHT
+      // registriert und wuerde mit "Invalid hostname" (0/0 Spieler) abgelehnt.
       const hostBuf = Buffer.from(host, "utf8");
       const portBuf = Buffer.alloc(2);
       portBuf.writeUInt16BE(port);
@@ -1249,11 +1299,24 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 960,
     height: 640,
-    resizable: false,          // rahmenlos + transparent -> feste Groesse, saubere runde Ecken
+    // BEKANNTER ELECTRON-BUG (Windows): transparent:true + resizable:false bricht
+    // die Transparenz -> Fenster wird deckend/eckig gemalt (genau das war der
+    // "keine runden Ecken"-Fehler seit v0.4.0). Workaround: resizable lassen und
+    // die Groesse ueber min/max festnageln — Nutzer kann trotzdem nichts ziehen.
+    resizable: true,
+    minWidth: 960, maxWidth: 960,
+    minHeight: 640, maxHeight: 640,
     frame: false,              // eigene Titelleiste (Minimieren/Schliessen im Renderer)
-    transparent: true,         // runde Ecken via CSS border-radius sichtbar
+    // Runde Ecken: Windows' natives DWM-Rounding (opakes Fenster) kann nur ~8px —
+    // Aaron will deutlich staerkere Rundung -> transparentes Fenster, die Ecken
+    // rundet CSS (body border-radius 20px, Ecken dahinter sind durchsichtig).
+    transparent: true,
     autoHideMenuBar: true,
     backgroundColor: "#00000000",
+    // KEIN show:false hier: versteckt erstellte transparente Fenster verlieren unter
+    // Windows die Transparenz (-> eckige schwarze Ecken). Ein weisser Start-Blitz ist
+    // bei transparent eh unmoeglich, und die preboot-CSS-Klasse haelt den Inhalt
+    // unsichtbar, bis die Boot-Animation startet.
     title: "MC-ROLEPLAY.DE",
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
@@ -1263,9 +1326,62 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  // Runde Ecken GARANTIERT: Fensterform per Windows-API zuschneiden (SetWindowRgn).
+  // Unabhaengig von Transparenz/Compositing/Treiber — die Ecken sind danach wirklich
+  // WEG (Klicks gehen durch), nicht nur uebermalt. CSS zeichnet denselben Radius,
+  // damit die Kante antialiased aussieht.
+  // Fensterform per API zuschneiden — aber 2px AUSSERHALB der CSS-Kurve:
+  // Die sichtbare Kante ist dadurch IMMER die weich geglaettete CSS-Rundung;
+  // der harte (nicht glaettbare) Region-Schnitt liegt knapp dahinter und faellt
+  // nicht mehr auf. Auf Systemen MIT funktionierender Transparenz ist der
+  // Bereich dazwischen eh durchsichtig -> der Zuschnitt ist dort unsichtbar
+  // und macht die Ecken nur sauber klick-durchlaessig. Win-win, immer aktiv.
+  mainWindow.webContents.once("did-finish-load", () => applyRoundedRegion(mainWindow, WINDOW_RADIUS_PX + 2));
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+}
+
+// Ecken-Radius des Launcher-Fensters in CSS-Pixeln — muss zum border-radius in
+// renderer/style.css passen (dort ebenfalls 30px).
+const WINDOW_RADIUS_PX = 30;
+
+function applyRoundedRegion(win, radiusCssPx) {
+  try {
+    const { screen } = require("electron");
+    const bounds = win.getBounds();
+    const display = screen.getDisplayMatching(bounds);
+    const scale = (display && display.scaleFactor) || 1;
+    // SetWindowRgn arbeitet in PHYSISCHEN Pixeln -> DPI-Skalierung einrechnen.
+    const w = Math.round(bounds.width * scale);
+    const h = Math.round(bounds.height * scale);
+    const d = Math.round(radiusCssPx * 2 * scale);   // CreateRoundRectRgn will den DURCHMESSER
+    const hwndBuf = win.getNativeWindowHandle();
+    const hwnd = process.arch === "x64" || process.arch === "arm64"
+      ? hwndBuf.readBigUInt64LE(0).toString()
+      : String(hwndBuf.readUInt32LE(0));
+    // PowerShell als P/Invoke-Vehikel (kein natives Node-Modul noetig).
+    // -EncodedCommand umgeht jede Quoting-Hoelle. Rechts/unten +1: Regionsgrenzen sind exklusiv.
+    const psScript =
+      "Add-Type -Namespace W -Name Api -MemberDefinition '" +
+      '[DllImport("gdi32.dll")] public static extern IntPtr CreateRoundRectRgn(int x1,int y1,int x2,int y2,int cx,int cy); ' +
+      '[DllImport("user32.dll")] public static extern int SetWindowRgn(IntPtr hWnd,IntPtr hRgn,bool bRedraw);\'; ' +
+      `$r=[W.Api]::CreateRoundRectRgn(0,0,${w + 1},${h + 1},${d},${d}); ` +
+      `[W.Api]::SetWindowRgn([IntPtr]${hwnd},$r,$true) | Out-Null`;
+    const enc = Buffer.from(psScript, "utf16le").toString("base64");
+    require("child_process").execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-EncodedCommand", enc],
+      { windowsHide: true, timeout: 15000 },
+      (err, stdout, stderr) => {
+        try {
+          fs.appendFileSync(path.join(DATA_DIR, "region.log"),
+            `[${new Date().toISOString()}] hwnd=${hwnd} ${w}x${h} d=${d} ` +
+            `err=${err ? err.message : "-"} out=${String(stdout).trim()} stderr=${String(stderr).trim()}\n`);
+        } catch (_e2) { /* Log ist Diagnose, nie kritisch */ }
+      }
+    );
+  } catch (_e) { /* schlimmstenfalls bleibt nur die CSS-Rundung */ }
 }
 
 // Bewusst KEIN requestSingleInstanceLock: eine verwaiste Sperr-Datei (nach einem

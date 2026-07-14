@@ -17,11 +17,18 @@
 html, body { height: 100%; margin: 0; }
 html { background: transparent; }
 body {
-  border-radius: 14px; border: 1px solid rgba(255,138,76,0.18);   /* rahmenloses Fenster, runde Ecken */
+  /* 30px-Rundung (Aaron-Wunsch). Die ECHTE Fensterform schneidet main.js per
+     SetWindowRgn (WINDOW_RADIUS_PX = 30, muss zu diesem Wert passen) — das CSS
+     zeichnet denselben Radius fuer eine weiche, antialiaste Kante. */
+  border-radius: 30px; border: 1px solid rgba(255,138,76,0.18);
   background: radial-gradient(120% 95% at 50% 34%, #3a160a 0%, #1d0a06 46%, #0a0503 82%);
   color: var(--paper-100); font-family: var(--font-body);
   overflow: hidden; user-select: none;
 }
+
+/* Boot-Stabilitaet: bis Fonts+erste Frames bereit sind, bleibt die Buehne unsichtbar —
+   verhindert Aufblitzen des Endzustands vor dem Start der Boot-Animation. */
+body.preboot main, body.preboot .stage { visibility: hidden; }
 
 /* ============ Hintergrund-Bühne (kein Grid) ============ */
 .stage { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
@@ -83,11 +90,34 @@ body.boot .wordmark { animation: lch-drop 0.8s cubic-bezier(0.4,0,0.3,1) both; }
 .server-status {
   margin-top: 26px; display: inline-flex; align-items: center; gap: 10px; padding: 10px 22px; border-radius: 999px;
   background: rgba(12,6,3,0.72); border: 1px solid rgba(255,120,60,0.25);
+  position: relative; cursor: pointer;
+  transition: border-color 200ms, background 200ms, transform 150ms var(--ease);
 }
+.server-status:hover { border-color: rgba(255,138,76,0.6); background: rgba(22,11,6,0.9); }
+.server-status:active { transform: scale(0.96); }
 body.boot .server-status { animation: lch-rise 0.5s var(--ease) 0.6s both; }
 .server-status .s-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--paper-500); }
 .server-status.online .s-dot { background: var(--online); box-shadow: 0 0 10px var(--online); animation: mcrp-pulse 1.8s ease-in-out infinite; }
 .server-status.offline .s-dot { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+/* Klick -> Neuprüfung: Dot pulsiert bernstein-schnell + Ping-Welle laeuft aus der Pille */
+.server-status.checking { pointer-events: none; }
+.server-status.checking .s-dot {
+  background: #ffb454; box-shadow: 0 0 10px #ffb454;
+  animation: mcrp-check-pulse 0.55s ease-in-out infinite;
+}
+.server-status.checking::after {
+  content: ""; position: absolute; inset: -1px; border-radius: 999px;
+  border: 1px solid rgba(255,180,84,0.8); pointer-events: none;
+  animation: mcrp-ping-ring 0.9s var(--ease) infinite;
+}
+@keyframes mcrp-check-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.6; }
+}
+@keyframes mcrp-ping-ring {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(1.18); opacity: 0; }
+}
 .s-label { font-weight: 700; font-size: 14px; color: var(--paper-100); }
 .s-meta { font-weight: 500; font-size: 14px; color: var(--paper-400); }
 

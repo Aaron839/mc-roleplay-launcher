@@ -7,7 +7,7 @@
   <title>MC-ROLEPLAY.DE</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="boot">
+<body class="preboot">
   <div class="stage" aria-hidden="true">
     <div class="glow-center"></div>
     <div class="glow-tl"></div>
@@ -44,7 +44,7 @@
       <div class="column">
         <h1 class="wordmark">MC-ROLEPLAY<span class="de">.DE</span></h1>
 
-        <div class="server-status" id="server-status">
+        <div class="server-status" id="server-status" role="button" tabindex="0" title="Klicken zum Aktualisieren">
           <span class="s-dot"></span>
           <span class="s-label" id="server-label">Prüfe Server …</span>
           <span class="s-meta" id="server-meta"></span>
@@ -104,8 +104,8 @@
           <span class="ram-name">Arbeitsspeicher</span>
           <span class="ram-val accent" id="ram-val">8 GB</span>
         </div>
-        <input type="range" id="ram-slider" min="4" max="16" step="1" value="8">
-        <div class="ram-scale"><span>4 GB</span><span>16 GB</span></div>
+        <input type="range" id="ram-slider" min="8" max="16" step="1" value="8">
+        <div class="ram-scale"><span>8 GB</span><span>16 GB</span></div>
       </div>
 
       <div class="setting-crash">

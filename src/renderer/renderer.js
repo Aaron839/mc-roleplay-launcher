@@ -65,8 +65,26 @@ let overall = 0;
 let updateReady = false;
 let logLines = [];
 
-// ---- Boot-Animationen nur einmal ----
-setTimeout(() => document.body.classList.remove("boot"), 1500);
+// ---- Boot-Animationen nur einmal — aber erst, wenn alles WIRKLICH bereit ist ----
+// Vorher startete die Animation sofort beim Laden: Fonts/Canvas waren noch nicht da
+// -> Ruckler und Aufblitzen. Jetzt: Fenster zeigt erst bei ready-to-show (main.js),
+// wir warten zusaetzlich auf die Fonts + 2 Frames + kurze Setzzeit, DANN Animation.
+(async () => {
+  try { await document.fonts.ready; } catch (_e) { /* Animation trotzdem starten */ }
+  await new Promise((r) => setTimeout(r, 350));
+  let started = false;
+  const startBoot = () => {
+    if (started) return;
+    started = true;
+    document.body.classList.remove("preboot");
+    document.body.classList.add("boot");
+    setTimeout(() => document.body.classList.remove("boot"), 1600);
+  };
+  // rAF = sauber synchron zum ersten gemalten Frame; feuert aber NIE in unsichtbaren/
+  // gedrosselten Fenstern -> Timeout-Fallback, damit der Launcher nie haengen bleibt.
+  requestAnimationFrame(() => requestAnimationFrame(startBoot));
+  setTimeout(startBoot, 700);
+})();
 
 // ---- Log ----
 function appendLog(message) {
@@ -339,6 +357,23 @@ async function refreshInfo() {
 }
 refreshInfo();
 setInterval(() => { if (!busy) refreshInfo(); }, 60 * 1000);
+
+// ---- Server-Status anklickbar: sofort neu pruefen (mit Puls + Ping-Welle) ----
+let statusChecking = false;
+serverStatus.addEventListener("click", async () => {
+  if (statusChecking) return;
+  statusChecking = true;
+  serverStatus.classList.add("checking");
+  serverLabel.textContent = "Prüfe Server …";
+  serverMeta.textContent = "";
+  const t0 = Date.now();
+  try { await refreshInfo(); } catch (_e) { /* refreshInfo faengt selbst */ }
+  // Animation mindestens kurz sichtbar lassen (sonst wirkt der Klick "tot")
+  const rest = 700 - (Date.now() - t0);
+  if (rest > 0) await new Promise((r) => setTimeout(r, rest));
+  serverStatus.classList.remove("checking");
+  statusChecking = false;
+});
 
 // ---- Funken der Brennkante (15, CSS-Loop) ----
 (function sparks() {
