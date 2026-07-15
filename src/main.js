@@ -65,17 +65,18 @@ function defaultRamMb() {
 }
 
 /**
- * Speicher-Preflight vor dem Spielstart (Erkenntnis aus den Crash-Analysen Juli 2026):
- * Der Minecraft-Prozess committet mit diesem Modpack mehrere GB NATIV zusaetzlich zum
- * Java-Heap (Treiber/Netty/JIT/Mods). Ist der system-weite Commit (RAM+Auslagerungsdatei)
- * beim Start schon zu knapp, stirbt das Spiel spaeter mit "insufficient memory" oder
- * reisst sogar den Grafiktreiber mit. Deshalb: vorher pruefen, verstaendlich warnen,
- * NICHT starten. Bei Messfehlern wird durchgewunken (niemals faelschlich blockieren).
+ * Speicher-Preflight vor dem Spielstart: prueft NUR den PHYSISCH VERBAUTEN RAM.
+ *
+ * WICHTIG (Lehre aus v0.4.1, 14.07.2026): Die fruehere Zusatz-Pruefung auf "freien"
+ * Commit (FreeVirtualMemory) hat faelschlich Spieler geblockt, die genug RAM haben —
+ * Windows vergroessert die Auslagerungsdatei bei Bedarf automatisch, der Momentanwert
+ * unterschaetzt also das tatsaechlich Verfuegbare. Aaron-Vorgabe: nur physischer RAM.
  */
-function checkMemoryPreflight(ramMb) {
+function checkMemoryPreflight(_ramMb) {
   const totalPhysMb = Math.round(os.totalmem() / (1024 * 1024));
-  // Harte Untergrenze: 8 GB Heap + Betriebssystem + Spiel-Overhead passen physisch
-  // nicht in einen Rechner unter ~12 GB — da hilft auch keine Auslagerungsdatei.
+  // 8 GB Heap + Betriebssystem + Spiel-Overhead passen physisch nicht in einen
+  // Rechner unter ~12 GB. (11500 statt 12288: Hersteller-Angaben liegen unter dem
+  // Marketing-Wert, weil BIOS/iGPU etwas abzweigen — 12-GB-PCs melden z.B. ~11,9 GB.)
   if (totalPhysMb < 11500) {
     return {
       ok: false,
@@ -83,29 +84,6 @@ function checkMemoryPreflight(ramMb) {
         `Dein PC hat nur ${Math.round(totalPhysMb / 1024)} GB Arbeitsspeicher. ` +
         `Das Modpack benoetigt mindestens 8 GB Java-Speicher plus System — ` +
         `dafuer sind mindestens 12 GB RAM noetig (empfohlen: 16 GB).`,
-    };
-  }
-  // Freien system-weiten Commit (RAM + Pagefile) abfragen. FreeVirtualMemory ist in KB.
-  let freeCommitMb = -1;
-  try {
-    const out = require("child_process").execSync(
-      'powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory"',
-      { timeout: 8000, windowsHide: true, encoding: "utf8" }
-    );
-    const kb = parseInt(String(out).trim(), 10);
-    if (Number.isFinite(kb) && kb > 0) freeCommitMb = Math.round(kb / 1024);
-  } catch (_e) { /* Messung fehlgeschlagen -> nicht blockieren */ }
-
-  // Heap + konservativer nativer Overhead muessen ins freie Commit passen.
-  const requiredMb = ramMb + 5120;
-  if (freeCommitMb >= 0 && freeCommitMb < requiredMb) {
-    return {
-      ok: false,
-      message:
-        `Nicht genug freier Arbeitsspeicher: ${(freeCommitMb / 1024).toFixed(1)} GB verfuegbar, ` +
-        `benoetigt werden ~${Math.round(requiredMb / 1024)} GB (inkl. Auslagerungsdatei). ` +
-        `Schliesse andere Programme (Browser, OBS, ...) oder stelle die Windows-Auslagerungsdatei ` +
-        `auf "automatisch verwalten", und versuche es dann erneut.`,
     };
   }
   return { ok: true };
