@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("launcher", {
   setRam: (ramMb) => ipcRenderer.invoke("set-ram", ramMb),
   setCrashReports: (enabled) => ipcRenderer.invoke("set-crash-reports", enabled),
   setDisclaimer: (enabled) => ipcRenderer.invoke("set-disclaimer", enabled),
+  setLaunchMode: (mode) => ipcRenderer.invoke("set-launch-mode", mode),
   authStatus: () => ipcRenderer.invoke("auth-status"),
   authLogin: () => ipcRenderer.invoke("auth-login"),
   authCancel: () => ipcRenderer.invoke("auth-cancel"),

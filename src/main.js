@@ -111,7 +111,10 @@ function loadSettings() {
   const sendCrashReports = s.sendCrashReports !== false;
   // Triggerwarnung beim Spielstart standardmaessig AN (sicherer Default), abschaltbar
   const showDisclaimer = s.showDisclaimer !== false;
-  return { ramMb, sendCrashReports, showDisclaimer };
+  // Start-Methode: "direct" (Microsoft-Login im Client, Standard) oder "official"
+  // (offizieller Minecraft Launcher uebernimmt Login+Start — z.B. bei Login-Stoerungen)
+  const launchMode = s.launchMode === "official" ? "official" : "direct";
+  return { ramMb, sendCrashReports, showDisclaimer, launchMode };
 }
 
 /**
@@ -718,9 +721,28 @@ ipcMain.handle("play", async (event) => {
     if (!fs.existsSync(MC_DIR) || profileFilePaths().length === 0) {
       throw new Error(MC_MISSING_MSG);
     }
+    // Start-Methode "official": Login+Start uebernimmt der offizielle Minecraft
+    // Launcher (Einstellungs-Schalter, z.B. bei Stoerungen der Anmelde-Server).
+    if (loadSettings().launchMode === "official") {
+      const javaExeOff = await findJava(send);
+      send("java", "Java gefunden: " + javaExeOff, 100, true);
+      await syncPack(javaExeOff, send, { allowOffline: true });
+      await ensureForge(javaExeOff, send);
+      const { launcherWasOpen } = await ensureProfile(send);
+      await launchOfficial(send, launcherWasOpen);
+      return { ok: true };
+    }
     // Stufe 2: stiller Microsoft-Login aus gespeichertem Token (Refresh).
     send("java", "Melde bei Microsoft an ...", null, true);
-    const session = await auth.silentSession();
+    let session;
+    try {
+      session = await auth.silentSession();
+    } catch (e) {
+      // Voruebergehende Stoerung (Microsoft/Xbox/Mojang) — Login bleibt gespeichert.
+      throw new Error(
+        "Anmeldung gerade nicht moeglich — die Anmelde-Server sind gestoert.\n" +
+        "Dein gespeicherter Login bleibt erhalten, bitte in ein paar Minuten erneut versuchen.\n(" + e.message + ")");
+    }
     if (!session) {
       return { ok: false, needLogin: true,
         error: "Bitte zuerst mit deinem Microsoft-Konto anmelden." };
@@ -1090,6 +1112,7 @@ ipcMain.handle("get-info", async () => {
     ramMb: s.ramMb,
     sendCrashReports: s.sendCrashReports,
     showDisclaimer: s.showDisclaimer,
+    launchMode: s.launchMode,
     account: auth.cachedAccount(),   // {name,uuid} oder null
     pack,
     mcServer,
@@ -1107,6 +1130,13 @@ ipcMain.handle("set-crash-reports", (_event, enabled) => {
   settings.sendCrashReports = !!enabled;
   saveSettings(settings);
   return { ok: true, sendCrashReports: settings.sendCrashReports };
+});
+
+ipcMain.handle("set-launch-mode", (_event, mode) => {
+  const settings = loadRawSettings();
+  settings.launchMode = mode === "official" ? "official" : "direct";
+  saveSettings(settings);
+  return { ok: true, launchMode: settings.launchMode };
 });
 
 ipcMain.handle("set-disclaimer", (_event, enabled) => {

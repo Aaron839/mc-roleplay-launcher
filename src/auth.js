@@ -97,7 +97,13 @@ async function refreshMsa(refreshToken) {
   const t = await postForm(
     `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`,
     { grant_type: "refresh_token", client_id: CLIENT_ID, refresh_token: refreshToken, scope: SCOPE });
-  if (!t.access_token) throw new Error("SESSION_EXPIRED");
+  if (!t.access_token) {
+    // Nur invalid_grant heisst "Token ist wirklich tot" (abgelaufen/widerrufen).
+    // Alles andere (Netzwerk, AADSTS-Serverfehler, Throttling) ist voruebergehend.
+    const err = new Error("Microsoft-Anmeldung abgelehnt: " + (t.error_description || t.error || "unbekannt").split("\n")[0]);
+    err.code = t.error === "invalid_grant" ? "INVALID_GRANT" : "TEMP";
+    throw err;
+  }
   return { access: t.access_token, refresh: t.refresh_token || refreshToken };
 }
 
@@ -135,15 +141,29 @@ async function getProfile(mcToken) {
   const r = await fetch("https://api.minecraftservices.com/minecraft/profile", {
     headers: { Authorization: "Bearer " + mcToken } });
   if (r.status === 404) throw new Error("Dieses Konto besitzt Minecraft: Java Edition nicht.");
-  if (!r.ok) throw new Error("Minecraft-Profil konnte nicht geladen werden (HTTP " + r.status + ").");
+  if (!r.ok) {
+    const err = new Error("Minecraft-Profil konnte nicht geladen werden (HTTP " + r.status + ").");
+    err.status = r.status;
+    throw err;
+  }
   const p = await r.json();
   return { uuid: p.id, name: p.name };
 }
 
-/** Baut aus MSA-Tokens eine komplette Spiel-Session (und persistiert den Refresh-Token). */
-async function buildSession(msa) {
+/**
+ * Baut aus MSA-Tokens eine komplette Spiel-Session (und persistiert den Refresh-Token).
+ * cachedProfile (name+uuid aus dem gespeicherten Konto): Faellt der Mojang-Profil-Server
+ * aus (5xx — z.B. Stoerung 18.07.2026), spielen Bestandsnutzer mit dem Cache weiter.
+ */
+async function buildSession(msa, cachedProfile) {
   const { mcToken, xuid } = await msaToMinecraft(msa.access);
-  const prof = await getProfile(mcToken);
+  let prof;
+  try {
+    prof = await getProfile(mcToken);
+  } catch (e) {
+    if (cachedProfile && cachedProfile.uuid && (e.status >= 500 || e.status === 429)) prof = cachedProfile;
+    else throw e;
+  }
   const session = {
     name: prof.name, uuid: prof.uuid, accessToken: mcToken, xuid, userType: "msa",
   };
@@ -159,18 +179,27 @@ async function login(onCode, shouldCancel) {
   return buildSession(msa);
 }
 
-/** Stiller Login aus gespeichertem Refresh-Token. Gibt Session oder null. */
+/**
+ * Stiller Login aus gespeichertem Refresh-Token.
+ * Gibt Session zurueck, oder null wenn der Token WIRKLICH tot ist (invalid_grant).
+ * Bei voruebergehenden Stoerungen (Netzwerk, Microsoft/Xbox/Mojang down) wird
+ * geworfen — der gespeicherte Login bleibt dabei ERHALTEN (frueher wurde er
+ * hier bei jedem Fehler geloescht -> Massen-Neuanmeldungen bei jeder Stoerung).
+ */
 async function silentSession() {
   const acc = loadAccount();
   if (!acc || !acc.refresh) return null;
+  let msa;
   try {
-    const msa = await refreshMsa(acc.refresh);
-    return await buildSession(msa);
-  } catch (_e) {
-    // Refresh abgelaufen/widerrufen -> Konto vergessen, Nutzer muss neu einloggen
-    clearAccount();
-    return null;
+    msa = await refreshMsa(acc.refresh);
+  } catch (e) {
+    if (e.code === "INVALID_GRANT") { clearAccount(); return null; }
+    throw e;   // voruebergehend -> Konto behalten, Fehler nach oben
   }
+  // Microsoft rotiert den Refresh-Token: sofort sichern, damit er auch dann
+  // nicht verloren geht, wenn die restliche Kette (Xbox/Mojang) gerade klemmt.
+  saveAccount({ refresh: msa.refresh, name: acc.name, uuid: acc.uuid });
+  return await buildSession(msa, { name: acc.name, uuid: acc.uuid });
 }
 
 /** Nur der Anzeigename aus dem lokalen Cache (ohne Netz), fuer die UI beim Start. */

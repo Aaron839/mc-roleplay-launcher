@@ -29,6 +29,7 @@ const ramSlider = $("ram-slider");
 const ramVal = $("ram-val");
 const crashToggle = $("crash-toggle");
 const disclaimerToggle = $("disclaimer-toggle");
+const officialToggle = $("official-toggle");
 const settingsApply = $("settings-apply");
 // Stufe 2: Microsoft-Login
 const accountPill = $("account-pill");
@@ -313,15 +314,21 @@ disclaimerToggle.addEventListener("click", () => {
   const on = disclaimerToggle.getAttribute("aria-checked") !== "true";
   disclaimerToggle.setAttribute("aria-checked", on ? "true" : "false");
 });
+officialToggle.addEventListener("click", () => {
+  const on = officialToggle.getAttribute("aria-checked") !== "true";
+  officialToggle.setAttribute("aria-checked", on ? "true" : "false");
+});
 settingsApply.addEventListener("click", async () => {
   settingsApply.disabled = true;
   const gb = parseInt(ramSlider.value, 10);
   const crash = crashToggle.getAttribute("aria-checked") === "true";
   const disclaimer = disclaimerToggle.getAttribute("aria-checked") === "true";
+  const official = officialToggle.getAttribute("aria-checked") === "true";
   try {
     await window.launcher.setRam(gb * 1024);
     await window.launcher.setCrashReports(crash);
     await window.launcher.setDisclaimer(disclaimer);
+    await window.launcher.setLaunchMode(official ? "official" : "direct");
     chipRam.textContent = gb + " GB";
   } catch (_e) { /* still schliessen */ }
   settingsApply.disabled = false;
@@ -342,6 +349,7 @@ async function refreshInfo() {
       ramSlider.value = gb; ramVal.textContent = gb + " GB";
       if (typeof info.sendCrashReports === "boolean") crashToggle.setAttribute("aria-checked", info.sendCrashReports ? "true" : "false");
       if (typeof info.showDisclaimer === "boolean") disclaimerToggle.setAttribute("aria-checked", info.showDisclaimer ? "true" : "false");
+      if (typeof info.launchMode === "string") officialToggle.setAttribute("aria-checked", info.launchMode === "official" ? "true" : "false");
     }
     if (info.mcServer && info.mcServer.online) {
       serverStatus.classList.add("online"); serverStatus.classList.remove("offline");
