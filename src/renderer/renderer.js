@@ -58,6 +58,7 @@ const winMin = $("win-min");
 const winCloseBtn = $("win-close");
 
 let loggedIn = false;
+let officialMode = false;   // Start ueber offiziellen Launcher -> kein Login im Client noetig
 let lastVerifyUrl = "https://microsoft.com/link";
 let lastCode = "";
 
@@ -155,10 +156,15 @@ function setAccount(name) {
   loggedIn = !!name;
   accountName.textContent = name || "Anmelden";
   accountPill.classList.toggle("online", loggedIn);
-  // Hauptknopf: eingeloggt -> SPIELEN (mit Play-Icon), sonst -> ANMELDEN
-  if (playText) playText.textContent = loggedIn ? "SPIELEN" : "ANMELDEN";
-  if (playIcon) playIcon.style.display = loggedIn ? "" : "none";
+  updatePlayLabel();
   if (!loggedIn && accountMenu) accountMenu.hidden = true;
+}
+// Hauptknopf: SPIELEN wenn eingeloggt ODER Start ueber offiziellen Launcher
+// (dort uebernimmt der offizielle Launcher den Login — der Client braucht keinen).
+function updatePlayLabel() {
+  const canPlay = loggedIn || officialMode;
+  if (playText) playText.textContent = canPlay ? "SPIELEN" : "ANMELDEN";
+  if (playIcon) playIcon.style.display = canPlay ? "" : "none";
 }
 function showLoginBlock(which) {
   loginIntro.hidden = which !== "intro";
@@ -238,8 +244,10 @@ loginClose.addEventListener("click", closeLogin);
 // ---- Spielen-Ablauf ----
 async function startPlay() {
   if (busy) return;
-  // Stufe 2: nicht angemeldet -> erst Login
-  if (!loggedIn) { openLogin(); return; }
+  // Stufe 2: nicht angemeldet -> erst Login.
+  // AUSSER im Modus "offizieller Launcher": dort loggt der offizielle Launcher ein,
+  // der Client startet ohne eigenen Login direkt durch.
+  if (!loggedIn && !officialMode) { openLogin(); return; }
   busy = true;
   overall = 0;
   setWork("Starte …", 0);
@@ -329,6 +337,8 @@ settingsApply.addEventListener("click", async () => {
     await window.launcher.setCrashReports(crash);
     await window.launcher.setDisclaimer(disclaimer);
     await window.launcher.setLaunchMode(official ? "official" : "direct");
+    officialMode = official;
+    updatePlayLabel();
     chipRam.textContent = gb + " GB";
   } catch (_e) { /* still schliessen */ }
   settingsApply.disabled = false;
@@ -343,8 +353,10 @@ async function refreshInfo() {
     const gb = Math.round(info.ramMb / 1024);
     chipRam.textContent = gb + " GB";
     chipModpack.textContent = info.pack && info.pack.ok && info.pack.version ? "v" + info.pack.version : "—";
+    if (typeof info.launchMode === "string") officialMode = info.launchMode === "official";
     if (info.account && info.account.name) setAccount(info.account.name);
     else if (!loggedIn) setAccount(null);
+    updatePlayLabel();
     if (overlay.hidden) {
       ramSlider.value = gb; ramVal.textContent = gb + " GB";
       if (typeof info.sendCrashReports === "boolean") crashToggle.setAttribute("aria-checked", info.sendCrashReports ? "true" : "false");
