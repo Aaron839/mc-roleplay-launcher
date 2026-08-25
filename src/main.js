@@ -1178,7 +1178,11 @@ ipcMain.handle("set-disclaimer", (_event, enabled) => {
 });
 
 ipcMain.handle("install-update", () => {
-  if (app.isPackaged) autoUpdater.quitAndInstall();
+  // quitAndInstall(isSilent=true, isForceRunAfter=true): Updates laufen VOLLSTAENDIG
+  // still im bisherigen Ordner und der Launcher startet danach neu. Ohne isSilent
+  // zeigte der Assistenten-Installer (seit v0.4.5) beim Update eine halbe
+  // Seitenfolge (Benutzerwahl ja, Ordnerwahl wegen --updated uebersprungen).
+  if (app.isPackaged) autoUpdater.quitAndInstall(true, true);
   return { ok: true };
 });
 
