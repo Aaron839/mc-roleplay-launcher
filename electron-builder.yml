@@ -20,7 +20,11 @@ win:
         - x64
 
 nsis:
-  oneClick: true
+  # Assistent statt One-Click: Nutzer kann den Installationsordner waehlen.
+  # Auto-Updates laufen weiterhin still im gewaehlten Ordner (electron-updater
+  # ruft den Installer mit /S auf und behaelt das bestehende Verzeichnis).
+  oneClick: false
+  allowToChangeInstallationDirectory: true
   perMachine: false
   deleteAppDataOnUninstall: false
 

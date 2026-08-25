@@ -67,25 +67,40 @@ let overall = 0;
 let updateReady = false;
 let logLines = [];
 
-// ---- Boot-Animationen nur einmal — aber erst, wenn alles WIRKLICH bereit ist ----
-// Vorher startete die Animation sofort beim Laden: Fonts/Canvas waren noch nicht da
-// -> Ruckler und Aufblitzen. Jetzt: Fenster zeigt erst bei ready-to-show (main.js),
-// wir warten zusaetzlich auf die Fonts + 2 Frames + kurze Setzzeit, DANN Animation.
+// ---- Boot: Zuendung ----
+// Schnell UND spektakulaer: kein fester 350ms-Puffer mehr — wir warten hoechstens
+// 120 ms auf die (lokalen) Fonts. Sequenz: Glut glimmt auf -> Schriftzug setzt
+// sich im Glutlicht -> UI steigt ein -> Lichtstreif ueber SPIELEN (~1.0s). Klick/Taste springt
+// sofort zum Endzustand. prefers-reduced-motion bekommt gar keine Animation.
 (async () => {
-  try { await document.fonts.ready; } catch (_e) { /* Animation trotzdem starten */ }
-  await new Promise((r) => setTimeout(r, 350));
-  let started = false;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+
+  try { await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 120))]); } catch (_e) {}
+
+  let started = false, fertig = false;
+  const ende = () => {
+    if (fertig) return;
+    fertig = true;
+    document.body.classList.remove("preboot", "boot");
+    window.removeEventListener("pointerdown", ende, true);
+    window.removeEventListener("keydown", ende, true);
+  };
   const startBoot = () => {
     if (started) return;
     started = true;
     document.body.classList.remove("preboot");
+    if (reduce) { ende(); return; }
     document.body.classList.add("boot");
-    setTimeout(() => document.body.classList.remove("boot"), 1600);
+    // Ueberspringen: jeder Klick / jede Taste beendet die Sequenz sofort
+    window.addEventListener("pointerdown", ende, true);
+    window.addEventListener("keydown", ende, true);
+    setTimeout(ende, 1100);
   };
-  // rAF = sauber synchron zum ersten gemalten Frame; feuert aber NIE in unsichtbaren/
-  // gedrosselten Fenstern -> Timeout-Fallback, damit der Launcher nie haengen bleibt.
+  // rAF = synchron zum ersten gemalten Frame; Fallback-Timeout, falls das Fenster
+  // gedrosselt startet (rAF feuert in unsichtbaren Fenstern nicht).
   requestAnimationFrame(() => requestAnimationFrame(startBoot));
-  setTimeout(startBoot, 700);
+  setTimeout(startBoot, 400);
 })();
 
 // ---- Log ----
@@ -425,6 +440,8 @@ serverStatus.addEventListener("click", async () => {
   for (let i = 0; i < 26; i++) {
     parts.push({ x: rnd(0, 1), y: rnd(0.08, 0.96), r: rnd(1.5, 4.5), sp: rnd(7, 13), a: rnd(0.35, 0.8), life: rnd(0, 1) });
   }
+
+
   function tick() {
     ctx.clearRect(0, 0, W, H);
     for (const p of parts) {

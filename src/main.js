@@ -335,7 +335,30 @@ function bootstrapJarPath() {
 // ---------------------------------------------------------------------------
 // Schritt 1: Java finden (oder Temurin 17 JRE herunterladen)
 // ---------------------------------------------------------------------------
+// Java-Cache: der zuletzt validierte Pfad wird mit Groesse+Aenderungszeit gemerkt.
+// Ist die Datei unveraendert, sparen wir uns beim naechsten Start die komplette
+// Kandidaten-Suche UND den java-Testlauf (~0,2-0,5 s pro SPIELEN-Klick).
+function javaCacheLesen() {
+  try {
+    const s = loadRawSettings();
+    if (!s.javaCache || !s.javaCache.path) return null;
+    const st = fs.statSync(s.javaCache.path);
+    if (st.size === s.javaCache.size && st.mtimeMs === s.javaCache.mtimeMs) return s.javaCache.path;
+  } catch (_e) { /* Datei weg/veraendert -> normale Suche */ }
+  return null;
+}
+function javaCacheMerken(exe) {
+  try {
+    const st = fs.statSync(exe);
+    const s = loadRawSettings();
+    s.javaCache = { path: exe, size: st.size, mtimeMs: st.mtimeMs };
+    saveSettings(s);
+  } catch (_e) { /* Cache ist optional */ }
+}
+
 async function findJava(send) {
+  const gemerkt = javaCacheLesen();
+  if (gemerkt) { send("java", "Java (gemerkt): " + gemerkt, 100, true); return gemerkt; }
   send("java", "Suche Java-Laufzeitumgebung ...", 0);
 
   // Kandidaten in Prioritaetsreihenfolge sammeln — jeder wird VALIDIERT
@@ -359,7 +382,7 @@ async function findJava(send) {
 
   for (const candidate of candidates) {
     if (!fs.existsSync(candidate)) continue;
-    if (await validateJava(candidate)) return candidate;
+    if (await validateJava(candidate)) { javaCacheMerken(candidate); return candidate; }
     send("java", "Ungeeignetes Java uebersprungen (zu alt/32-Bit): " + candidate, null, true);
   }
 
@@ -391,6 +414,7 @@ async function findJava(send) {
   if (!extracted || !(await validateJava(extracted))) {
     throw new Error("Java wurde entpackt, ist aber nicht lauffaehig. Bitte den Launcher neu starten.");
   }
+  javaCacheMerken(extracted);
   return extracted;
 }
 
@@ -777,6 +801,9 @@ ipcMain.handle("play", async (event) => {
     send("done", "Minecraft startet — viel Spass, " + session.name + "!", 100);
     return { ok: true };
   } catch (err) {
+    // Java-Cache verwerfen: falls der Fehler an einer kaputten Java-Installation
+    // liegt, findet der naechste Versuch wieder per Vollsuche ein gesundes Java.
+    try { const s = loadRawSettings(); delete s.javaCache; saveSettings(s); } catch (_e) {}
     const message = err && err.message ? err.message : String(err);
     send("error", message, null);
     return { ok: false, error: message };
@@ -808,6 +835,9 @@ ipcMain.handle("sync-pack", async (event) => {
     send("done", "Modpack ist auf dem neuesten Stand.", 100);
     return { ok: true };
   } catch (err) {
+    // Java-Cache verwerfen: falls der Fehler an einer kaputten Java-Installation
+    // liegt, findet der naechste Versuch wieder per Vollsuche ein gesundes Java.
+    try { const s = loadRawSettings(); delete s.javaCache; saveSettings(s); } catch (_e) {}
     const message = err && err.message ? err.message : String(err);
     send("error", message, null);
     return { ok: false, error: message };
